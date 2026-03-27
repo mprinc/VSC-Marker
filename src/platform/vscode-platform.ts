@@ -83,7 +83,7 @@ export class VscNotificationService implements NotificationService {
 
 /**
  * Read image from system clipboard using native tools.
- * macOS: writes an AppleScript to a temp file and runs it via osascript.
+ * macOS: uses JXA (JavaScript for Automation) via osascript.
  * Linux: uses xclip.
  * Windows: uses PowerShell.
  */
@@ -92,34 +92,27 @@ async function readClipboardImageNative(): Promise<Uint8Array | null> {
   const { promisify } = await import('util');
   const { tmpdir } = await import('os');
   const execAsync = promisify(exec);
-  const timestamp = Date.now();
-  const tmpPath = path.join(tmpdir(), `marker-clipboard-${timestamp}.png`);
+  const tmpPath = path.join(tmpdir(), `marker-clipboard-${Date.now()}.png`);
 
   if (process.platform === 'darwin') {
-    const scriptPath = path.join(tmpdir(), `marker-clipboard-${timestamp}.scpt`);
     try {
-      const script = [
-        'use framework "AppKit"',
-        "set pb to current application's NSPasteboard's generalPasteboard()",
-        "set imgData to pb's dataForType:(current application's NSPasteboardTypePNG)",
-        'if imgData is missing value then',
-        "  set tiffData to pb's dataForType:(current application's NSPasteboardTypeTIFF)",
-        '  if tiffData is missing value then',
-        '    error "No image in clipboard"',
-        '  end if',
-        "  set bitmapRep to current application's NSBitmapImageRep's imageRepWithData:tiffData",
-        "  set imgData to bitmapRep's representationUsingType:(current application's NSBitmapImageFileTypePNG) properties:(missing value)",
-        'end if',
-        `imgData's writeToFile:"${tmpPath}" atomically:true`,
-      ].join('\n');
-      await fs.writeFile(scriptPath, script, 'utf-8');
-      await execAsync(`osascript "${scriptPath}"`);
-      await fs.unlink(scriptPath).catch(() => {});
+      const jxa = `
+ObjC.import("AppKit");
+var pb = $.NSPasteboard.generalPasteboard;
+var pngData = pb.dataForType($.NSPasteboardTypePNG);
+if (pngData.isNil()) {
+  var tiffData = pb.dataForType($.NSPasteboardTypeTIFF);
+  if (tiffData.isNil()) { throw "No image"; }
+  var rep = $.NSBitmapImageRep.imageRepWithData(tiffData);
+  pngData = rep.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $());
+}
+pngData.writeToFileAtomically("${tmpPath}", true);
+      `.trim();
+      await execAsync(`osascript -l JavaScript -e '${jxa.replace(/'/g, "'\\''")}'`);
       const data = await fs.readFile(tmpPath);
       await fs.unlink(tmpPath).catch(() => {});
       return new Uint8Array(data);
     } catch {
-      await fs.unlink(scriptPath).catch(() => {});
       return null;
     }
   } else if (process.platform === 'linux') {
