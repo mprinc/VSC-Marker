@@ -83,39 +83,43 @@ export class VscNotificationService implements NotificationService {
 
 /**
  * Read image from system clipboard using native tools.
- * macOS: uses osascript + pbpaste workaround to detect clipboard image,
- *        then uses a Swift helper or pngpaste if available.
- * For cross-platform support, this could be extended.
+ * macOS: writes an AppleScript to a temp file and runs it via osascript.
+ * Linux: uses xclip.
+ * Windows: uses PowerShell.
  */
 async function readClipboardImageNative(): Promise<Uint8Array | null> {
   const { exec } = await import('child_process');
   const { promisify } = await import('util');
   const { tmpdir } = await import('os');
   const execAsync = promisify(exec);
-  const tmpPath = path.join(tmpdir(), `marker-clipboard-${Date.now()}.png`);
+  const timestamp = Date.now();
+  const tmpPath = path.join(tmpdir(), `marker-clipboard-${timestamp}.png`);
 
   if (process.platform === 'darwin') {
+    const scriptPath = path.join(tmpdir(), `marker-clipboard-${timestamp}.scpt`);
     try {
-      // Use osascript to save clipboard image as PNG
-      const script = `
-        use framework "AppKit"
-        set pb to current application's NSPasteboard's generalPasteboard()
-        set imgData to pb's dataForType:(current application's NSPasteboardTypePNG)
-        if imgData is missing value then
-          set tiffData to pb's dataForType:(current application's NSPasteboardTypeTIFF)
-          if tiffData is missing value then
-            error "No image in clipboard"
-          end if
-          set bitmapRep to current application's NSBitmapImageRep's imageRepWithData:tiffData
-          set imgData to bitmapRep's representationUsingType:(current application's NSBitmapImageFileTypePNG) properties:(missing value)
-        end if
-        imgData's writeToFile:"${tmpPath}" atomically:true
-      `;
-      await execAsync(`osascript -l AppleScript -e '${script.replace(/'/g, "'\\''")}'`);
+      const script = [
+        'use framework "AppKit"',
+        "set pb to current application's NSPasteboard's generalPasteboard()",
+        "set imgData to pb's dataForType:(current application's NSPasteboardTypePNG)",
+        'if imgData is missing value then',
+        "  set tiffData to pb's dataForType:(current application's NSPasteboardTypeTIFF)",
+        '  if tiffData is missing value then',
+        '    error "No image in clipboard"',
+        '  end if',
+        "  set bitmapRep to current application's NSBitmapImageRep's imageRepWithData:tiffData",
+        "  set imgData to bitmapRep's representationUsingType:(current application's NSBitmapImageFileTypePNG) properties:(missing value)",
+        'end if',
+        `imgData's writeToFile:"${tmpPath}" atomically:true`,
+      ].join('\n');
+      await fs.writeFile(scriptPath, script, 'utf-8');
+      await execAsync(`osascript "${scriptPath}"`);
+      await fs.unlink(scriptPath).catch(() => {});
       const data = await fs.readFile(tmpPath);
       await fs.unlink(tmpPath).catch(() => {});
       return new Uint8Array(data);
     } catch {
+      await fs.unlink(scriptPath).catch(() => {});
       return null;
     }
   } else if (process.platform === 'linux') {

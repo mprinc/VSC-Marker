@@ -1,6 +1,7 @@
 {
   "name": "marker",
   "displayName": "Marker",
+  "publisher": "mprinc",
   "description": "Markdown extension for pasting links and images over selected text",
   "version": "0.0.1",
   "engines": {
