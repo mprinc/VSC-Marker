@@ -2,6 +2,11 @@
 
 A VS Code extension for working with Markdown files.
 
+To switch off the default VS Code behavior of copying files (like images) into the workspace when pasting, add the following setting to your `settings.json`:
+
+"markdown.editor.filePaste.copyIntoWorkspace": "never",
+
+
 ## Features
 
 ### Paste Link (`Cmd+Alt+V` / `Ctrl+Alt+V`)
