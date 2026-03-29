@@ -340,28 +340,23 @@ export function findWrapperAround(
   wrapper: string
 ): [number, number] | null {
   const wLen = wrapper.length;
-  // Search backwards for opening wrapper
-  let openIdx = -1;
-  for (let i = cursorCol - 1; i >= 0; i--) {
+  // Find all wrapper positions in the line
+  const positions: number[] = [];
+  for (let i = 0; i <= lineText.length - wLen; i++) {
     if (lineText.substring(i, i + wLen) === wrapper) {
-      openIdx = i;
-      break;
+      positions.push(i);
+      i += wLen - 1; // skip past this wrapper
     }
   }
-  if (openIdx === -1) { return null; }
-
-  // Search forwards for closing wrapper (after the opening one)
-  const searchFrom = Math.max(openIdx + wLen, cursorCol);
-  let closeIdx = -1;
-  for (let i = searchFrom; i <= lineText.length - wLen; i++) {
-    if (lineText.substring(i, i + wLen) === wrapper) {
-      closeIdx = i;
-      break;
+  // Pair them up (1st+2nd, 3rd+4th, ...) and check if cursor is within any pair
+  for (let i = 0; i + 1 < positions.length; i += 2) {
+    const start = positions[i];
+    const end = positions[i + 1] + wLen;
+    if (cursorCol >= start && cursorCol <= end) {
+      return [start, end];
     }
   }
-  if (closeIdx === -1) { return null; }
-
-  return [openIdx, closeIdx + wLen];
+  return null;
 }
 
 /**
@@ -375,6 +370,7 @@ export function findHtmlWrapperAround(
   const openTag = `<${tag}>`;
   const closeTag = `</${tag}>`;
 
+  // Search backwards for opening tag
   let openIdx = -1;
   for (let i = cursorCol - 1; i >= 0; i--) {
     if (lineText.substring(i, i + openTag.length) === openTag) {
@@ -384,9 +380,9 @@ export function findHtmlWrapperAround(
   }
   if (openIdx === -1) { return null; }
 
-  const searchFrom = Math.max(openIdx + openTag.length, cursorCol);
+  // Search for closing tag after the opening (not after cursor)
   let closeIdx = -1;
-  for (let i = searchFrom; i <= lineText.length - closeTag.length; i++) {
+  for (let i = openIdx + openTag.length; i <= lineText.length - closeTag.length; i++) {
     if (lineText.substring(i, i + closeTag.length) === closeTag) {
       closeIdx = i;
       break;
@@ -394,7 +390,11 @@ export function findHtmlWrapperAround(
   }
   if (closeIdx === -1) { return null; }
 
-  return [openIdx, closeIdx + closeTag.length];
+  const end = closeIdx + closeTag.length;
+  if (cursorCol >= openIdx && cursorCol <= end) {
+    return [openIdx, end];
+  }
+  return null;
 }
 
 // --- List continuation ---

@@ -239,11 +239,15 @@ async function onEnter(): Promise<void> {
   const numberedMode = getConfig<NumberedListMode>('autoList.numbered.mode', 'auto');
   const prefix = buildNextLinePrefix(current, previousNumber, numberedMode);
 
+  // Split line at cursor: text after cursor moves to new line
+  const textAfterCursor = currentLine.substring(pos.character);
   await vscEditor.edit(editBuilder => {
-    editBuilder.insert(pos.with(pos.line, currentLine.length), '\n' + prefix);
+    // Remove text from cursor to end of line, then insert newline + prefix + that text
+    const rangeAfterCursor = new vscode.Range(pos, new vscode.Position(pos.line, currentLine.length));
+    editBuilder.replace(rangeAfterCursor, '\n' + prefix + textAfterCursor);
   });
 
-  // Move cursor to end of inserted prefix
+  // Move cursor to end of inserted prefix (before the carried-over text)
   const newPos = new vscode.Position(pos.line + 1, prefix.length);
   vscEditor.selection = new vscode.Selection(newPos, newPos);
 }
@@ -649,26 +653,37 @@ ${body}
   }
 }
 
+function safe(fn: (...args: any[]) => Promise<void>): (...args: any[]) => Promise<void> {
+  return async (...args: any[]) => {
+    try {
+      await fn(...args);
+    } catch (err) {
+      console.error('[Marker]', err);
+      notify.showError(`Marker error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
-    vscode.commands.registerCommand('marker.pasteLink', pasteLink),
-    vscode.commands.registerCommand('marker.pasteImage', pasteImage),
-    vscode.commands.registerCommand('marker.smartPaste', smartPaste),
-    vscode.commands.registerCommand('marker.onEnter', onEnter),
+    vscode.commands.registerCommand('marker.pasteLink', safe(pasteLink)),
+    vscode.commands.registerCommand('marker.pasteImage', safe(pasteImage)),
+    vscode.commands.registerCommand('marker.smartPaste', safe(smartPaste)),
+    vscode.commands.registerCommand('marker.onEnter', safe(onEnter)),
     vscode.commands.registerCommand('marker.showPreview', () => showPreview(context)),
-    vscode.commands.registerCommand('marker.toggleBold', () => toggleFormat('**')),
-    vscode.commands.registerCommand('marker.toggleItalic', () => toggleFormat('*')),
-    vscode.commands.registerCommand('marker.toggleUnderline', () => toggleFormat('u', true)),
-    vscode.commands.registerCommand('marker.toggleStrikethrough', () => toggleFormat('~~')),
-    vscode.commands.registerCommand('marker.toggleCodeSpan', toggleCodeSpanCmd),
-    vscode.commands.registerCommand('marker.toggleCodeBlock', toggleCodeBlockCmd),
-    vscode.commands.registerCommand('marker.headingUp', () => changeHeadingLevel('up')),
-    vscode.commands.registerCommand('marker.headingDown', () => changeHeadingLevel('down')),
-    vscode.commands.registerCommand('marker.toggleTask', toggleTaskCmd),
-    vscode.commands.registerCommand('marker.indentList', indentListCmd),
-    vscode.commands.registerCommand('marker.outdentList', outdentListCmd),
-    vscode.commands.registerCommand('marker.createTable', createTable),
-    vscode.commands.registerCommand('marker.exportHtml', exportToHtml)
+    vscode.commands.registerCommand('marker.toggleBold', safe(() => toggleFormat('**'))),
+    vscode.commands.registerCommand('marker.toggleItalic', safe(() => toggleFormat('*'))),
+    vscode.commands.registerCommand('marker.toggleUnderline', safe(() => toggleFormat('u', true))),
+    vscode.commands.registerCommand('marker.toggleStrikethrough', safe(() => toggleFormat('~~'))),
+    vscode.commands.registerCommand('marker.toggleCodeSpan', safe(toggleCodeSpanCmd)),
+    vscode.commands.registerCommand('marker.toggleCodeBlock', safe(toggleCodeBlockCmd)),
+    vscode.commands.registerCommand('marker.headingUp', safe(() => changeHeadingLevel('up'))),
+    vscode.commands.registerCommand('marker.headingDown', safe(() => changeHeadingLevel('down'))),
+    vscode.commands.registerCommand('marker.toggleTask', safe(toggleTaskCmd)),
+    vscode.commands.registerCommand('marker.indentList', safe(indentListCmd)),
+    vscode.commands.registerCommand('marker.outdentList', safe(outdentListCmd)),
+    vscode.commands.registerCommand('marker.createTable', safe(createTable)),
+    vscode.commands.registerCommand('marker.exportHtml', safe(exportToHtml))
   );
 }
 

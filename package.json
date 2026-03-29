@@ -3,7 +3,11 @@
   "displayName": "Marker",
   "publisher": "mprinc",
   "description": "Markdown extension for pasting links and images over selected text",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mprinc/VSC-Marker"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -180,12 +184,12 @@
       {
         "command": "marker.indentList",
         "key": "tab",
-        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode"
+        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible"
       },
       {
         "command": "marker.outdentList",
         "key": "shift+tab",
-        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode"
+        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible"
       }
     ],
     "configuration": {
