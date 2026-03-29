@@ -10,7 +10,9 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -21,6 +23,70 @@
       {
         "command": "marker.pasteImage",
         "title": "Marker: Paste Image"
+      },
+      {
+        "command": "marker.smartPaste",
+        "title": "Marker: Smart Paste"
+      },
+      {
+        "command": "marker.onEnter",
+        "title": "Marker: Smart Enter"
+      },
+      {
+        "command": "marker.showPreview",
+        "title": "Marker: Show Preview"
+      },
+      {
+        "command": "marker.toggleBold",
+        "title": "Marker: Toggle Bold"
+      },
+      {
+        "command": "marker.toggleItalic",
+        "title": "Marker: Toggle Italic"
+      },
+      {
+        "command": "marker.toggleUnderline",
+        "title": "Marker: Toggle Underline"
+      },
+      {
+        "command": "marker.createTable",
+        "title": "Marker: Create/Convert Table"
+      },
+      {
+        "command": "marker.toggleStrikethrough",
+        "title": "Marker: Toggle Strikethrough"
+      },
+      {
+        "command": "marker.toggleCodeSpan",
+        "title": "Marker: Toggle Code Span"
+      },
+      {
+        "command": "marker.toggleCodeBlock",
+        "title": "Marker: Toggle Code Block"
+      },
+      {
+        "command": "marker.headingUp",
+        "title": "Marker: Heading Level Up"
+      },
+      {
+        "command": "marker.headingDown",
+        "title": "Marker: Heading Level Down"
+      },
+      {
+        "command": "marker.toggleTask",
+        "title": "Marker: Toggle Task Checkbox"
+      },
+      {
+        "command": "marker.indentList",
+        "title": "Marker: Indent List"
+      },
+      {
+        "command": "marker.outdentList",
+        "title": "Marker: Outdent List"
+      },
+      {
+        "command": "marker.exportHtml",
+        "title": "Marker: Export to HTML"
       }
     ],
     "keybindings": [
@@ -35,8 +101,141 @@
         "key": "ctrl+alt+i",
         "mac": "cmd+alt+i",
         "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.smartPaste",
+        "key": "ctrl+v",
+        "mac": "cmd+v",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.onEnter",
+        "key": "enter",
+        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode"
+      },
+      {
+        "command": "marker.showPreview",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "editorLangId == markdown"
+      },
+      {
+        "command": "marker.toggleBold",
+        "key": "ctrl+b",
+        "mac": "cmd+b",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.toggleItalic",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.toggleUnderline",
+        "key": "ctrl+u",
+        "mac": "cmd+u",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.createTable",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.toggleStrikethrough",
+        "key": "alt+s",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.toggleCodeSpan",
+        "key": "ctrl+e",
+        "mac": "cmd+e",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.toggleCodeBlock",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.headingUp",
+        "key": "ctrl+shift+]",
+        "mac": "cmd+shift+]",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.headingDown",
+        "key": "ctrl+shift+[",
+        "mac": "cmd+shift+[",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.toggleTask",
+        "key": "alt+c",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.indentList",
+        "key": "tab",
+        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode"
+      },
+      {
+        "command": "marker.outdentList",
+        "key": "shift+tab",
+        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Marker",
+      "properties": {
+        "marker.smartPaste.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Override Cmd+V/Ctrl+V in Markdown files with smart paste (auto-detect link or image)"
+        },
+        "marker.pasteLink.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable pasting URLs over selected text as Markdown links"
+        },
+        "marker.pasteImage.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable pasting clipboard images over selected text as Markdown images"
+        },
+        "marker.autoList.bullet.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-continue bullet lists (- or +) on Enter"
+        },
+        "marker.autoList.numbered.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-continue numbered lists on Enter"
+        },
+        "marker.autoList.numbered.mode": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "increment"
+          ],
+          "enumDescriptions": [
+            "Smart: if last two numbers are the same, keep same; if different, increment",
+            "Always increment the number"
+          ],
+          "description": "How to determine the next number in a numbered list"
+        },
+        "marker.codeBlock.defaultLanguage": {
+          "type": "string",
+          "default": "sh",
+          "description": "Default language for code blocks (e.g. sh, typescript, python)"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run esbuild-base -- --minify",
@@ -48,12 +247,16 @@
     "lint": "eslint src"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^20.0.0",
-    "esbuild": "^0.24.0",
-    "typescript": "^5.5.0",
+    "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "eslint": "^9.0.0"
+    "esbuild": "^0.24.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "markdown-it": "^14.1.1"
   }
 }
