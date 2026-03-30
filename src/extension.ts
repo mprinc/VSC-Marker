@@ -25,6 +25,11 @@ const editor = new VscEditorService();
 const fileSystem = new VscFileSystemService();
 const notify = new VscNotificationService();
 
+// Re-entrancy guards to prevent recursive command execution
+let enterBusy = false;
+let pasteBusy = false;
+let tabBusy = false;
+
 /**
  * Get text and selection for paste operations.
  * If text is selected → use selection.
@@ -106,42 +111,48 @@ async function pasteLink(): Promise<void> {
 }
 
 async function smartPaste(): Promise<void> {
-  if (!getConfig<boolean>('smartPaste.enabled', true)) {
-    await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
-    return;
-  }
+  if (pasteBusy) { return; }
+  pasteBusy = true;
+  try {
+    if (!getConfig<boolean>('smartPaste.enabled', true)) {
+      await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+      return;
+    }
 
-  const vscEditor = vscode.window.activeTextEditor;
-  if (!vscEditor) {
-    await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
-    return;
-  }
+    const vscEditor = vscode.window.activeTextEditor;
+    if (!vscEditor) {
+      await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+      return;
+    }
 
-  // Check if we have text (selected or word under cursor) for link/image wrapping
-  const info = getPasteSelection(vscEditor);
+    // Read clipboard text once (avoid double read)
+    const clipboardText = await clipboard.readText();
 
-  if (info) {
-    // Text available + URL in clipboard → paste as link
-    if (getConfig<boolean>('pasteLink.enabled', true)) {
-      const clipboardText = await clipboard.readText();
-      if (clipboardText && isUrl(clipboardText.trim())) {
+    // Check if we have text (selected or word under cursor) for link/image wrapping
+    const info = getPasteSelection(vscEditor);
+
+    if (info) {
+      // Text available + URL in clipboard → paste as link
+      if (getConfig<boolean>('pasteLink.enabled', true) && clipboardText && isUrl(clipboardText.trim())) {
         await pasteLink();
         return;
       }
-    }
 
-    // Text available + image in clipboard → paste as image
-    if (getConfig<boolean>('pasteImage.enabled', true) && editor.getSelectedText()) {
-      const imageData = await clipboard.readImage();
-      if (imageData) {
-        await pasteImage();
-        return;
+      // Text available + image in clipboard → paste as image
+      if (getConfig<boolean>('pasteImage.enabled', true) && !clipboardText) {
+        const imageData = await clipboard.readImage();
+        if (imageData) {
+          await pasteImage();
+          return;
+        }
       }
     }
-  }
 
-  // Fallback: default paste
-  await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+    // Fallback: default paste
+    await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+  } finally {
+    pasteBusy = false;
+  }
 }
 
 async function pasteImage(): Promise<void> {
@@ -193,62 +204,82 @@ function getConfig<T>(key: string, defaultValue: T): T {
 }
 
 async function onEnter(): Promise<void> {
-  const vscEditor = vscode.window.activeTextEditor;
-  if (!vscEditor) {
-    await vscode.commands.executeCommand('type', { text: '\n' });
-    return;
-  }
-
-  const doc = vscEditor.document;
-  const pos = vscEditor.selection.active;
-  const currentLine = doc.lineAt(pos.line).text;
-  const current = parseListPrefix(currentLine);
-
-  const bulletEnabled = getConfig<boolean>('autoList.bullet.enabled', true);
-  const numberedEnabled = getConfig<boolean>('autoList.numbered.enabled', true);
-
-  // Check if we should handle this line
-  const shouldHandle =
-    (current.type === 'bullet' && bulletEnabled) ||
-    (current.type === 'number' && numberedEnabled);
-
-  if (!shouldHandle) {
-    await vscode.commands.executeCommand('type', { text: '\n' });
-    return;
-  }
-
-  // If current item is empty (just marker, no text) → remove marker and add blank line
-  if (current.isEmpty) {
-    const lineRange = doc.lineAt(pos.line).range;
-    await vscEditor.edit(editBuilder => {
-      editBuilder.replace(lineRange, '');
-    });
-    return;
-  }
-
-  // Determine previous number for auto mode
-  let previousNumber: number | null = null;
-  if (current.type === 'number' && pos.line > 0) {
-    const prevLine = doc.lineAt(pos.line - 1).text;
-    const prev = parseListPrefix(prevLine);
-    if (prev.type === 'number' && prev.number !== undefined) {
-      previousNumber = prev.number;
+  if (enterBusy) { return; }
+  enterBusy = true;
+  try {
+    const vscEditor = vscode.window.activeTextEditor;
+    if (!vscEditor) {
+      await defaultNewline(vscEditor);
+      return;
     }
+
+    const doc = vscEditor.document;
+    const pos = vscEditor.selection.active;
+    const currentLine = doc.lineAt(pos.line).text;
+    const current = parseListPrefix(currentLine);
+
+    const bulletEnabled = getConfig<boolean>('autoList.bullet.enabled', true);
+    const numberedEnabled = getConfig<boolean>('autoList.numbered.enabled', true);
+
+    const shouldHandle =
+      (current.type === 'bullet' && bulletEnabled) ||
+      (current.type === 'number' && numberedEnabled);
+
+    if (!shouldHandle) {
+      await defaultNewline(vscEditor);
+      return;
+    }
+
+    // If current item is empty (just marker, no text) → remove marker
+    if (current.isEmpty) {
+      const lineRange = doc.lineAt(pos.line).range;
+      await vscEditor.edit(editBuilder => {
+        editBuilder.replace(lineRange, '');
+      });
+      return;
+    }
+
+    // Determine previous number for auto mode
+    let previousNumber: number | null = null;
+    if (current.type === 'number' && pos.line > 0) {
+      const prevLine = doc.lineAt(pos.line - 1).text;
+      const prev = parseListPrefix(prevLine);
+      if (prev.type === 'number' && prev.number !== undefined) {
+        previousNumber = prev.number;
+      }
+    }
+
+    const numberedMode = getConfig<NumberedListMode>('autoList.numbered.mode', 'auto');
+    const prefix = buildNextLinePrefix(current, previousNumber, numberedMode);
+
+    // Split line at cursor: text after cursor moves to new line
+    const textAfterCursor = currentLine.substring(pos.character);
+    await vscEditor.edit(editBuilder => {
+      const rangeAfterCursor = new vscode.Range(pos, new vscode.Position(pos.line, currentLine.length));
+      editBuilder.replace(rangeAfterCursor, '\n' + prefix + textAfterCursor);
+    });
+
+    const newPos = new vscode.Position(pos.line + 1, prefix.length);
+    vscEditor.selection = new vscode.Selection(newPos, newPos);
+  } finally {
+    enterBusy = false;
   }
+}
 
-  const numberedMode = getConfig<NumberedListMode>('autoList.numbered.mode', 'auto');
-  const prefix = buildNextLinePrefix(current, previousNumber, numberedMode);
-
-  // Split line at cursor: text after cursor moves to new line
-  const textAfterCursor = currentLine.substring(pos.character);
-  await vscEditor.edit(editBuilder => {
-    // Remove text from cursor to end of line, then insert newline + prefix + that text
-    const rangeAfterCursor = new vscode.Range(pos, new vscode.Position(pos.line, currentLine.length));
-    editBuilder.replace(rangeAfterCursor, '\n' + prefix + textAfterCursor);
+/** Insert a plain newline — direct edit, no executeCommand to avoid recursion */
+async function defaultNewline(vscEditor: vscode.TextEditor | undefined): Promise<void> {
+  if (!vscEditor) { return; }
+  const pos = vscEditor.selection.active;
+  const line = vscEditor.document.lineAt(pos.line).text;
+  // Preserve indentation from current line
+  const indentMatch = line.match(/^(\s*)/);
+  const indent = indentMatch ? indentMatch[1] : '';
+  const textAfter = line.substring(pos.character);
+  await vscEditor.edit(eb => {
+    const range = new vscode.Range(pos, new vscode.Position(pos.line, line.length));
+    eb.replace(range, '\n' + indent + textAfter);
   });
-
-  // Move cursor to end of inserted prefix (before the carried-over text)
-  const newPos = new vscode.Position(pos.line + 1, prefix.length);
+  const newPos = new vscode.Position(pos.line + 1, indent.length);
   vscEditor.selection = new vscode.Selection(newPos, newPos);
 }
 
@@ -521,70 +552,81 @@ async function toggleTaskCmd(): Promise<void> {
 // --- List indent/outdent ---
 
 async function indentListCmd(): Promise<void> {
-  const vscEditor = vscode.window.activeTextEditor;
-  if (!vscEditor) {
-    await vscode.commands.executeCommand('tab');
-    return;
-  }
-
-  const doc = vscEditor.document;
-  const sel = vscEditor.selection;
-  const startLine = sel.start.line;
-  const endLine = sel.end.line;
-
-  // Only handle if at least one line is a list item
-  let hasListItem = false;
-  for (let i = startLine; i <= endLine; i++) {
-    if (parseListPrefix(doc.lineAt(i).text).type !== 'none') {
-      hasListItem = true;
-      break;
+  if (tabBusy) { return; }
+  tabBusy = true;
+  try {
+    const vscEditor = vscode.window.activeTextEditor;
+    if (!vscEditor) {
+      await vscode.commands.executeCommand('editor.action.indentLines');
+      return;
     }
-  }
 
-  if (!hasListItem) {
-    await vscode.commands.executeCommand('tab');
-    return;
-  }
+    const doc = vscEditor.document;
+    const sel = vscEditor.selection;
+    const startLine = sel.start.line;
+    const endLine = sel.end.line;
 
-  const tabSize = vscEditor.options.tabSize as number || 2;
-  await vscEditor.edit(eb => {
+    let hasListItem = false;
     for (let i = startLine; i <= endLine; i++) {
-      eb.replace(doc.lineAt(i).range, indentLine(doc.lineAt(i).text, tabSize));
+      if (parseListPrefix(doc.lineAt(i).text).type !== 'none') {
+        hasListItem = true;
+        break;
+      }
     }
-  });
+
+    if (!hasListItem) {
+      await vscode.commands.executeCommand('editor.action.indentLines');
+      return;
+    }
+
+    const tabSize = vscEditor.options.tabSize as number || 2;
+    await vscEditor.edit(eb => {
+      for (let i = startLine; i <= endLine; i++) {
+        eb.replace(doc.lineAt(i).range, indentLine(doc.lineAt(i).text, tabSize));
+      }
+    });
+  } finally {
+    tabBusy = false;
+  }
 }
 
 async function outdentListCmd(): Promise<void> {
-  const vscEditor = vscode.window.activeTextEditor;
-  if (!vscEditor) {
-    await vscode.commands.executeCommand('outdent');
-    return;
-  }
-
-  const doc = vscEditor.document;
-  const sel = vscEditor.selection;
-  const startLine = sel.start.line;
-  const endLine = sel.end.line;
-
-  let hasListItem = false;
-  for (let i = startLine; i <= endLine; i++) {
-    if (parseListPrefix(doc.lineAt(i).text).type !== 'none') {
-      hasListItem = true;
-      break;
+  if (tabBusy) { return; }
+  tabBusy = true;
+  try {
+    const vscEditor = vscode.window.activeTextEditor;
+    if (!vscEditor) {
+      await vscode.commands.executeCommand('editor.action.outdentLines');
+      return;
     }
-  }
 
-  if (!hasListItem) {
-    await vscode.commands.executeCommand('outdent');
-    return;
-  }
+    const doc = vscEditor.document;
+    const sel = vscEditor.selection;
+    const startLine = sel.start.line;
+    const endLine = sel.end.line;
 
-  const tabSize = vscEditor.options.tabSize as number || 2;
-  await vscEditor.edit(eb => {
+    let hasListItem = false;
     for (let i = startLine; i <= endLine; i++) {
-      eb.replace(doc.lineAt(i).range, outdentLine(doc.lineAt(i).text, tabSize));
+      if (parseListPrefix(doc.lineAt(i).text).type !== 'none') {
+        hasListItem = true;
+        break;
+      }
     }
-  });
+
+    if (!hasListItem) {
+      await vscode.commands.executeCommand('editor.action.outdentLines');
+      return;
+    }
+
+    const tabSize = vscEditor.options.tabSize as number || 2;
+    await vscEditor.edit(eb => {
+      for (let i = startLine; i <= endLine; i++) {
+        eb.replace(doc.lineAt(i).range, outdentLine(doc.lineAt(i).text, tabSize));
+      }
+    });
+  } finally {
+    tabBusy = false;
+  }
 }
 
 // --- Export to HTML ---
