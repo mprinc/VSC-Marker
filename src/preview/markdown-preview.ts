@@ -49,24 +49,21 @@ export function showPreview(context: vscode.ExtensionContext): void {
   // Initial render
   panel.webview.html = renderHtml(panel.webview, doc);
 
-  // Update on document change
+  // Debounced update on document change (300ms)
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   const changeListener = vscode.workspace.onDidChangeTextDocument(e => {
     if (e.document.uri.toString() === docKey) {
-      panel.webview.html = renderHtml(panel.webview, e.document);
-    }
-  });
-
-  // Update on save (for consistency)
-  const saveListener = vscode.workspace.onDidSaveTextDocument(savedDoc => {
-    if (savedDoc.uri.toString() === docKey) {
-      panel.webview.html = renderHtml(panel.webview, savedDoc);
+      if (debounceTimer) { clearTimeout(debounceTimer); }
+      debounceTimer = setTimeout(() => {
+        panel.webview.html = renderHtml(panel.webview, e.document);
+      }, 300);
     }
   });
 
   panel.onDidDispose(() => {
+    if (debounceTimer) { clearTimeout(debounceTimer); }
     openPanels.delete(docKey);
     changeListener.dispose();
-    saveListener.dispose();
   });
 }
 

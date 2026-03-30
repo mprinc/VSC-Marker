@@ -6,12 +6,17 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { tmpdir } from 'os';
 import {
   ClipboardService,
   EditorService,
   FileSystemService,
   NotificationService
 } from './interfaces';
+
+const execAsync = promisify(exec);
 
 export class VscClipboardService implements ClipboardService {
   async readText(): Promise<string> {
@@ -88,10 +93,6 @@ export class VscNotificationService implements NotificationService {
  * Windows: uses PowerShell.
  */
 async function readClipboardImageNative(): Promise<Uint8Array | null> {
-  const { exec } = await import('child_process');
-  const { promisify } = await import('util');
-  const { tmpdir } = await import('os');
-  const execAsync = promisify(exec);
   const tmpPath = path.join(tmpdir(), `marker-clipboard-${Date.now()}.png`);
 
   if (process.platform === 'darwin') {
