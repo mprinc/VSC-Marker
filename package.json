@@ -3,7 +3,7 @@
   "displayName": "Marker",
   "publisher": "mprinc",
   "description": "Markdown extension for pasting links and images over selected text",
-  "version": "0.0.4",
+  "version": "0.0.8",
   "repository": {
     "type": "git",
     "url": "https://github.com/mprinc/VSC-Marker"
@@ -91,6 +91,10 @@
       {
         "command": "marker.exportHtml",
         "title": "Marker: Export to HTML"
+      },
+      {
+        "command": "marker.deleteImage",
+        "title": "Marker: Delete Image (file + reference)"
       }
     ],
     "keybindings": [
@@ -190,25 +194,51 @@
         "command": "marker.outdentList",
         "key": "shift+tab",
         "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible"
+      },
+      {
+        "command": "marker.deleteImage",
+        "key": "ctrl+shift+delete",
+        "mac": "cmd+shift+backspace",
+        "when": "editorTextFocus && editorLangId == markdown"
       }
     ],
     "configuration": {
       "title": "Marker",
       "properties": {
-        "marker.smartPaste.enabled": {
+        "marker.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Override Cmd+V/Ctrl+V in Markdown files with smart paste (auto-detect link or image)"
+          "description": "Master switch: disable ALL Marker functionality (keys fall through to VS Code defaults)"
+        },
+        "marker.override.enter": {
+          "type": "boolean",
+          "default": true,
+          "description": "Override Enter key for smart list continuation. When false, Enter behaves normally."
+        },
+        "marker.override.tab": {
+          "type": "boolean",
+          "default": true,
+          "description": "Override Tab/Shift+Tab for list indent/outdent. When false, Tab behaves normally."
+        },
+        "marker.override.paste": {
+          "type": "boolean",
+          "default": true,
+          "description": "Override Cmd+V/Ctrl+V for smart paste. When false, paste behaves normally."
         },
         "marker.pasteLink.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable pasting URLs over selected text as Markdown links"
+          "description": "Auto-detect URL in clipboard and wrap selected text as Markdown link"
         },
         "marker.pasteImage.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable pasting clipboard images over selected text as Markdown images"
+          "description": "Auto-detect image in clipboard and save as file + insert Markdown image"
+        },
+        "marker.pasteImage.autoName": {
+          "type": "string",
+          "default": "слика-DDD",
+          "description": "Auto-name pattern when pasting image without selection. D = digit placeholder (zero-padded). Examples: 'image-DDD' → image-001, 'слика-DD' → slika-01, 'screenshot-DDDD' → screenshot-0001"
         },
         "marker.autoList.bullet.enabled": {
           "type": "boolean",
@@ -232,6 +262,66 @@
             "Always increment the number"
           ],
           "description": "How to determine the next number in a numbered list"
+        },
+        "marker.formatting.bold": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cmd+B bold toggle"
+        },
+        "marker.formatting.italic": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cmd+I italic toggle"
+        },
+        "marker.formatting.underline": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cmd+U underline toggle"
+        },
+        "marker.formatting.strikethrough": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Alt+S strikethrough toggle"
+        },
+        "marker.formatting.codeSpan": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cmd+E code span toggle"
+        },
+        "marker.formatting.codeBlock": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cmd+Shift+E code block toggle"
+        },
+        "marker.heading.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cmd+Shift+]/[ heading level up/down"
+        },
+        "marker.task.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Alt+C task checkbox toggle"
+        },
+        "marker.table.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cmd+Alt+T table creation"
+        },
+        "marker.preview.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cmd+Shift+V Markdown preview"
+        },
+        "marker.preview.debounceMs": {
+          "type": "number",
+          "default": 300,
+          "description": "Debounce delay (ms) for live preview updates. Higher = fewer updates."
+        },
+        "marker.export.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Export to HTML command"
         },
         "marker.codeBlock.defaultLanguage": {
           "type": "string",

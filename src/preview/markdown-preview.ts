@@ -49,14 +49,15 @@ export function showPreview(context: vscode.ExtensionContext): void {
   // Initial render
   panel.webview.html = renderHtml(panel.webview, doc);
 
-  // Debounced update on document change (300ms)
+  // Debounced update on document change
+  const debounceMs = vscode.workspace.getConfiguration('marker').get<number>('preview.debounceMs', 300);
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   const changeListener = vscode.workspace.onDidChangeTextDocument(e => {
     if (e.document.uri.toString() === docKey) {
       if (debounceTimer) { clearTimeout(debounceTimer); }
       debounceTimer = setTimeout(() => {
         panel.webview.html = renderHtml(panel.webview, e.document);
-      }, 300);
+      }, debounceMs);
     }
   });
 
