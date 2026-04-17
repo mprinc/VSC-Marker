@@ -1,0 +1,123 @@
+{
+  // ============================================================
+  //  MARKER EXTENSION — DEBUG / CONFIGURATION REFERENCE
+  // ============================================================
+  //
+  //  DEBUGGING STRATEGY (finding what crashes other extensions):
+  //
+  //  STEP 1: Set "marker.enabled" to false
+  //          → all Marker features are OFF, commands fall through to VS Code defaults
+  //          → verify: do other extensions (Copilot, etc.) still crash?
+  //          → if YES: Marker is NOT the problem
+  //          → if NO: continue to Step 2
+  //
+  //  STEP 2: Set "marker.enabled" to true, but disable ALL key overrides:
+  //          → "marker.override.enter": false
+  //          → "marker.override.tab": false
+  //          → "marker.override.paste": false
+  //          → verify: still crashes?
+  //          → if NO: one of the key overrides is the culprit → go to Step 3
+  //
+  //  STEP 3: Enable ONE key override at a time:
+  //          → first "marker.override.paste": true  → test
+  //          → then  "marker.override.enter": true  → test
+  //          → then  "marker.override.tab": true    → test
+  //          → the one that causes crash is the culprit
+  //
+  //  STEP 4: If key overrides are not the problem, enable features one by one:
+  //          → formatting, preview, export, etc.
+  //
+  //  COPY these settings into your VS Code settings.json:
+  //    Cmd+Shift+P → "Preferences: Open User Settings (JSON)"
+  // ============================================================
+
+  // ─── MASTER SWITCH ─────────────────────────────────────────
+  // Disables ALL Marker functionality.
+  // All intercepted keys (Enter, Tab, Cmd+V) fall through to VS Code defaults.
+  // All formatting commands become no-ops.
+  "marker.enabled": true,
+
+  // ─── KEY INTERCEPTIONS (HIGHEST RISK) ──────────────────────
+  // These override fundamental keys that other extensions also listen to.
+  // Most likely to cause conflicts with Copilot, Copilot Chat, etc.
+  // When disabled, the key falls through to normal VS Code behavior.
+
+  // Enter key: smart list continuation (- item → Enter → - new item)
+  // Risk: generates editor.edit() calls that trigger onDidChangeTextDocument
+  //       for ALL extensions listening (Copilot tries to process the change)
+  "marker.override.enter": true,
+
+  // Tab key: list indentation (only on list lines, otherwise normal tab)
+  // Risk: conflicts with Copilot inline suggestions (Tab = accept suggestion)
+  //       generates editor.edit() changes that Copilot processes
+  "marker.override.tab": true,
+
+  // Cmd+V / Ctrl+V: smart paste (auto-detect URL or image in clipboard)
+  // Risk: reads clipboard (async), may spawn osascript for image detection,
+  //       generates editor.edit() that triggers other extensions
+  "marker.override.paste": true,
+
+  // ─── PASTE SUB-FEATURES ────────────────────────────────────
+  // These only matter when marker.override.paste is true.
+
+  // Auto-detect URL in clipboard and wrap selected text as [text](url)
+  "marker.pasteLink.enabled": true,
+
+  // Auto-detect image in clipboard and save as file + insert ![text](file.png)
+  // Risk: spawns osascript/JXA process to read clipboard image
+  "marker.pasteImage.enabled": true,
+
+  // Auto-name pattern when pasting image without selection.
+  // D = digit placeholder (zero-padded to the number of D's).
+  // Examples: "image-DDD" → image-001, "slika-DD" → slika-01
+  "marker.pasteImage.autoName": "image-DDD",
+
+  // ─── ENTER SUB-FEATURES ────────────────────────────────────
+  // These only matter when marker.override.enter is true.
+
+  // Auto-continue bullet lists (- item, + item)
+  "marker.autoList.bullet.enabled": true,
+
+  // Auto-continue numbered lists (1. item)
+  "marker.autoList.numbered.enabled": true,
+
+  // Numbered list mode: "auto" (smart) or "increment" (always +1)
+  "marker.autoList.numbered.mode": "auto",
+
+  // ─── FORMATTING COMMANDS (LOW RISK) ────────────────────────
+  // These use dedicated shortcuts (Cmd+B, Cmd+I, etc.)
+  // Only triggered by explicit user action, not by typing.
+  // Unlikely to cause crashes, but can be disabled for completeness.
+
+  "marker.formatting.bold": true,           // Cmd+B
+  "marker.formatting.italic": true,         // Cmd+I
+  "marker.formatting.underline": true,      // Cmd+U
+  "marker.formatting.strikethrough": true,  // Alt+S
+  "marker.formatting.codeSpan": true,       // Cmd+E
+  "marker.formatting.codeBlock": true,      // Cmd+Shift+E
+
+  // ─── HEADING (LOW RISK) ────────────────────────────────────
+  "marker.heading.enabled": true,           // Cmd+Shift+] / Cmd+Shift+[
+
+  // ─── TASK TOGGLE (LOW RISK) ────────────────────────────────
+  "marker.task.enabled": true,              // Alt+C
+
+  // ─── TABLE (LOW RISK) ──────────────────────────────────────
+  "marker.table.enabled": true,             // Cmd+Alt+T
+
+  // ─── PREVIEW (MEDIUM RISK) ─────────────────────────────────
+  // Opens a side panel with live preview.
+  // Risk: registers onDidChangeTextDocument listener that re-renders HTML
+  //       on every keystroke (debounced). This generates webview updates.
+  "marker.preview.enabled": true,           // Cmd+Shift+V
+
+  // Debounce delay for preview updates (ms). Higher = less frequent updates.
+  "marker.preview.debounceMs": 300,
+
+  // ─── EXPORT (LOW RISK) ─────────────────────────────────────
+  "marker.export.enabled": true,            // Command palette only
+
+  // ─── OTHER ─────────────────────────────────────────────────
+  // Default language tag for code blocks
+  "marker.codeBlock.defaultLanguage": "sh"
+}
