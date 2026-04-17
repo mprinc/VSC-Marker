@@ -79,6 +79,7 @@ function getPasteSelection(vscEditor: vscode.TextEditor): {
 }
 
 async function pasteLink(): Promise<void> {
+  if (!isEnabled()) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor) { return; }
 
@@ -114,7 +115,7 @@ async function smartPaste(): Promise<void> {
   if (pasteBusy) { return; }
   pasteBusy = true;
   try {
-    if (!getConfig<boolean>('smartPaste.enabled', true)) {
+    if (!isEnabled() || !getConfig<boolean>('override.paste', true)) {
       await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
       return;
     }
@@ -137,14 +138,14 @@ async function smartPaste(): Promise<void> {
         await pasteLink();
         return;
       }
+    }
 
-      // Text available + image in clipboard → paste as image
-      if (getConfig<boolean>('pasteImage.enabled', true) && !clipboardText) {
-        const imageData = await clipboard.readImage();
-        if (imageData) {
-          await pasteImage();
-          return;
-        }
+    // Image in clipboard → paste as image (works with or without selection)
+    if (getConfig<boolean>('pasteImage.enabled', true) && !clipboardText) {
+      const imageData = await clipboard.readImage();
+      if (imageData) {
+        await pasteImage();
+        return;
       }
     }
 
@@ -156,14 +157,9 @@ async function smartPaste(): Promise<void> {
 }
 
 async function pasteImage(): Promise<void> {
+  if (!isEnabled()) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor) { return; }
-
-  const info = getPasteSelection(vscEditor);
-  if (!info) {
-    notify.showError('No text selected. Select text or place cursor on a word.');
-    return;
-  }
 
   const currentFile = editor.getCurrentFilePath();
   if (!currentFile) {
@@ -178,29 +174,75 @@ async function pasteImage(): Promise<void> {
   }
 
   const dir = fileSystem.getDirname(currentFile);
-  const filename = buildImageFilename(info.text, 'png');
-  const imagePath = path.join(dir, filename);
+  const info = getPasteSelection(vscEditor);
 
-  // If file already exists, add a numeric suffix
-  let finalPath = imagePath;
-  let finalFilename = filename;
-  let counter = 1;
-  while (await fileSystem.fileExists(finalPath)) {
-    const nameWithoutExt = filename.replace(/\.png$/, '');
-    finalFilename = `${nameWithoutExt}-${counter}.png`;
-    finalPath = path.join(dir, finalFilename);
-    counter++;
+  let altText: string;
+  let finalFilename: string;
+
+  if (info) {
+    // Has selection/word — use it as alt text and filename
+    altText = info.text;
+    const filename = buildImageFilename(altText, 'png');
+    let finalPath = path.join(dir, filename);
+    finalFilename = filename;
+    let counter = 1;
+    while (await fileSystem.fileExists(finalPath)) {
+      const nameWithoutExt = filename.replace(/\.png$/, '');
+      finalFilename = `${nameWithoutExt}-${counter}.png`;
+      finalPath = path.join(dir, finalFilename);
+      counter++;
+    }
+  } else {
+    // No selection — generate auto name from pattern
+    const pattern = getConfig<string>('pasteImage.autoName', 'image-DDD');
+    const result = await findNextAutoFilename(dir, pattern, 'png');
+    finalFilename = result.filename;
+    altText = result.altText;
   }
 
+  const finalPath = path.join(dir, finalFilename);
   await fileSystem.writeFile(finalPath, imageData);
 
-  const markdownImage = wrapWithImage(info.text, finalFilename);
-  await vscEditor.edit(eb => eb.replace(info.selection, markdownImage));
+  const markdownImage = wrapWithImage(altText, finalFilename);
+  const insertAt = info ? info.selection : new vscode.Selection(vscEditor.selection.active, vscEditor.selection.active);
+  await vscEditor.edit(eb => eb.replace(insertAt, markdownImage));
   notify.showInfo(`Image saved as ${finalFilename}`);
+}
+
+/**
+ * Find the next available auto-generated filename.
+ * Pattern uses D for digit placeholders: "image-DDD" → image-001, image-002, ...
+ * Returns { filename, altText }.
+ */
+async function findNextAutoFilename(
+  dir: string, pattern: string, ext: string
+): Promise<{ filename: string; altText: string }> {
+  // Count D's to determine zero-padding width
+  const dMatch = pattern.match(/D+/);
+  const padWidth = dMatch ? dMatch[0].length : 3;
+  const prefix = pattern.replace(/D+/, '');
+
+  for (let n = 1; n < 10000; n++) {
+    const numStr = String(n).padStart(padWidth, '0');
+    const name = pattern.replace(/D+/, numStr);
+    const filename = `${name}.${ext}`;
+    const fullPath = path.join(dir, filename);
+    if (!(await fileSystem.fileExists(fullPath))) {
+      return { filename, altText: `${prefix}${numStr}` };
+    }
+  }
+  // Fallback
+  const ts = Date.now();
+  return { filename: `${prefix}${ts}.${ext}`, altText: `${prefix}${ts}` };
 }
 
 function getConfig<T>(key: string, defaultValue: T): T {
   return vscode.workspace.getConfiguration('marker').get<T>(key, defaultValue);
+}
+
+/** Check if Marker is globally enabled */
+function isEnabled(): boolean {
+  return getConfig<boolean>('enabled', true);
 }
 
 async function onEnter(): Promise<void> {
@@ -208,7 +250,7 @@ async function onEnter(): Promise<void> {
   enterBusy = true;
   try {
     const vscEditor = vscode.window.activeTextEditor;
-    if (!vscEditor) {
+    if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.enter', true)) {
       await defaultNewline(vscEditor);
       return;
     }
@@ -284,6 +326,7 @@ async function defaultNewline(vscEditor: vscode.TextEditor | undefined): Promise
 }
 
 async function createTable(): Promise<void> {
+  if (!isEnabled() || !getConfig<boolean>('table.enabled', true)) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor) { return; }
 
@@ -447,12 +490,30 @@ function getFormatSelection(
   return null;
 }
 
-async function toggleFormat(wrapper: string, isHtml: boolean = false): Promise<void> {
+async function toggleFormat(wrapper: string, isHtml: boolean = false, configKey?: string): Promise<void> {
+  if (!isEnabled()) { return; }
+  if (configKey && !getConfig<boolean>(configKey, true)) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor) { return; }
 
   const sel = getFormatSelection(vscEditor, wrapper, isHtml);
-  if (!sel) { return; }
+
+  if (!sel) {
+    // No selection, no word — insert empty wrapper and position cursor inside
+    const pos = vscEditor.selection.active;
+    let open: string, close: string;
+    if (isHtml) {
+      open = `<${wrapper}>`;
+      close = `</${wrapper}>`;
+    } else {
+      open = wrapper;
+      close = wrapper;
+    }
+    await vscEditor.edit(eb => eb.insert(pos, open + close));
+    const cursorPos = new vscode.Position(pos.line, pos.character + open.length);
+    vscEditor.selection = new vscode.Selection(cursorPos, cursorPos);
+    return;
+  }
 
   const text = vscEditor.document.getText(sel);
   const result = isHtml ? toggleHtmlWrap(text, wrapper) : toggleWrap(text, wrapper);
@@ -465,17 +526,26 @@ async function toggleFormat(wrapper: string, isHtml: boolean = false): Promise<v
 // --- Code span / block ---
 
 async function toggleCodeSpanCmd(): Promise<void> {
+  if (!isEnabled() || !getConfig<boolean>('formatting.codeSpan', true)) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor) { return; }
 
   const sel = getFormatSelection(vscEditor, '`', false);
-  if (!sel) { return; }
+  if (!sel) {
+    // No selection — insert empty `` and position cursor inside
+    const pos = vscEditor.selection.active;
+    await vscEditor.edit(eb => eb.insert(pos, '``'));
+    const cursorPos = new vscode.Position(pos.line, pos.character + 1);
+    vscEditor.selection = new vscode.Selection(cursorPos, cursorPos);
+    return;
+  }
 
   const text = vscEditor.document.getText(sel);
   await vscEditor.edit(eb => eb.replace(sel, toggleCodeSpan(text)));
 }
 
 async function toggleCodeBlockCmd(): Promise<void> {
+  if (!isEnabled() || !getConfig<boolean>('formatting.codeBlock', true)) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor || vscEditor.selection.isEmpty) { return; }
   const text = vscEditor.document.getText(vscEditor.selection);
@@ -486,6 +556,7 @@ async function toggleCodeBlockCmd(): Promise<void> {
 // --- Heading level with cascade ---
 
 async function changeHeadingLevel(direction: 'up' | 'down'): Promise<void> {
+  if (!isEnabled() || !getConfig<boolean>('heading.enabled', true)) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor) { return; }
 
@@ -536,6 +607,7 @@ async function changeHeadingLevel(direction: 'up' | 'down'): Promise<void> {
 // --- Task list toggle ---
 
 async function toggleTaskCmd(): Promise<void> {
+  if (!isEnabled() || !getConfig<boolean>('task.enabled', true)) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor) { return; }
 
@@ -556,7 +628,7 @@ async function indentListCmd(): Promise<void> {
   tabBusy = true;
   try {
     const vscEditor = vscode.window.activeTextEditor;
-    if (!vscEditor) {
+    if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.tab', true)) {
       await vscode.commands.executeCommand('editor.action.indentLines');
       return;
     }
@@ -582,7 +654,13 @@ async function indentListCmd(): Promise<void> {
     const tabSize = vscEditor.options.tabSize as number || 2;
     await vscEditor.edit(eb => {
       for (let i = startLine; i <= endLine; i++) {
-        eb.replace(doc.lineAt(i).range, indentLine(doc.lineAt(i).text, tabSize));
+        let indented = indentLine(doc.lineAt(i).text, tabSize);
+        // Reset numbered list to 1 when indenting (new sub-list level)
+        const parsed = parseListPrefix(indented);
+        if (parsed.type === 'number' && parsed.number !== undefined && parsed.number !== 1) {
+          indented = indented.replace(/^(\s*)\d+\./, '$11.');
+        }
+        eb.replace(doc.lineAt(i).range, indented);
       }
     });
   } finally {
@@ -595,7 +673,7 @@ async function outdentListCmd(): Promise<void> {
   tabBusy = true;
   try {
     const vscEditor = vscode.window.activeTextEditor;
-    if (!vscEditor) {
+    if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.tab', true)) {
       await vscode.commands.executeCommand('editor.action.outdentLines');
       return;
     }
@@ -632,6 +710,7 @@ async function outdentListCmd(): Promise<void> {
 // --- Export to HTML ---
 
 async function exportToHtml(): Promise<void> {
+  if (!isEnabled() || !getConfig<boolean>('export.enabled', true)) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor || vscEditor.document.languageId !== 'markdown') {
     notify.showError('No active Markdown file.');
@@ -695,6 +774,70 @@ ${body}
   }
 }
 
+// --- Delete image (text + file) ---
+
+async function deleteImageCmd(): Promise<void> {
+  if (!isEnabled()) { return; }
+  const vscEditor = vscode.window.activeTextEditor;
+  if (!vscEditor) { return; }
+
+  const doc = vscEditor.document;
+  const pos = vscEditor.selection.active;
+  const lineText = doc.lineAt(pos.line).text;
+
+  const link = findLinkAround(lineText, pos.character);
+  if (!link || !link.isImage) {
+    notify.showError('Cursor is not on an image (place cursor on ![alt](path)).');
+    return;
+  }
+
+  // Resolve image path relative to current document
+  const currentFile = doc.uri.fsPath;
+  const dir = path.dirname(currentFile);
+  const imageUrl = link.url;
+
+  // Skip external URLs
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('data:')) {
+    // External image — just remove the markdown text
+    const range = new vscode.Range(
+      new vscode.Position(pos.line, link.start),
+      new vscode.Position(pos.line, link.end)
+    );
+    await vscEditor.edit(eb => eb.delete(range));
+    return;
+  }
+
+  const imagePath = path.resolve(dir, decodeURIComponent(imageUrl));
+  const fileExists = await fileSystem.fileExists(imagePath);
+
+  // Confirm deletion
+  const fileName = path.basename(imagePath);
+  const message = fileExists
+    ? `Delete image "${fileName}" from disk and remove from document?`
+    : `Image file "${fileName}" not found on disk. Remove reference from document?`;
+
+  const choice = await vscode.window.showWarningMessage(message, { modal: true }, 'Delete');
+  if (choice !== 'Delete') { return; }
+
+  // Delete file from disk
+  if (fileExists) {
+    try {
+      await vscode.workspace.fs.delete(vscode.Uri.file(imagePath));
+    } catch (err) {
+      notify.showError(`Failed to delete file: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+  }
+
+  // Remove markdown text from document
+  const range = new vscode.Range(
+    new vscode.Position(pos.line, link.start),
+    new vscode.Position(pos.line, link.end)
+  );
+  await vscEditor.edit(eb => eb.delete(range));
+  notify.showInfo(fileExists ? `Deleted ${fileName}` : `Removed image reference`);
+}
+
 function safe(fn: (...args: any[]) => Promise<void>): (...args: any[]) => Promise<void> {
   return async (...args: any[]) => {
     try {
@@ -712,11 +855,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('marker.pasteImage', safe(pasteImage)),
     vscode.commands.registerCommand('marker.smartPaste', safe(smartPaste)),
     vscode.commands.registerCommand('marker.onEnter', safe(onEnter)),
-    vscode.commands.registerCommand('marker.showPreview', () => showPreview(context)),
-    vscode.commands.registerCommand('marker.toggleBold', safe(() => toggleFormat('**'))),
-    vscode.commands.registerCommand('marker.toggleItalic', safe(() => toggleFormat('*'))),
-    vscode.commands.registerCommand('marker.toggleUnderline', safe(() => toggleFormat('u', true))),
-    vscode.commands.registerCommand('marker.toggleStrikethrough', safe(() => toggleFormat('~~'))),
+    vscode.commands.registerCommand('marker.showPreview', () => {
+      if (!isEnabled() || !getConfig<boolean>('preview.enabled', true)) { return; }
+      showPreview(context);
+    }),
+    vscode.commands.registerCommand('marker.toggleBold', safe(() => toggleFormat('**', false, 'formatting.bold'))),
+    vscode.commands.registerCommand('marker.toggleItalic', safe(() => toggleFormat('*', false, 'formatting.italic'))),
+    vscode.commands.registerCommand('marker.toggleUnderline', safe(() => toggleFormat('u', true, 'formatting.underline'))),
+    vscode.commands.registerCommand('marker.toggleStrikethrough', safe(() => toggleFormat('~~', false, 'formatting.strikethrough'))),
     vscode.commands.registerCommand('marker.toggleCodeSpan', safe(toggleCodeSpanCmd)),
     vscode.commands.registerCommand('marker.toggleCodeBlock', safe(toggleCodeBlockCmd)),
     vscode.commands.registerCommand('marker.headingUp', safe(() => changeHeadingLevel('up'))),
@@ -725,7 +871,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('marker.indentList', safe(indentListCmd)),
     vscode.commands.registerCommand('marker.outdentList', safe(outdentListCmd)),
     vscode.commands.registerCommand('marker.createTable', safe(createTable)),
-    vscode.commands.registerCommand('marker.exportHtml', safe(exportToHtml))
+    vscode.commands.registerCommand('marker.exportHtml', safe(exportToHtml)),
+    vscode.commands.registerCommand('marker.deleteImage', safe(deleteImageCmd))
   );
 }
 

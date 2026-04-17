@@ -74,6 +74,8 @@ To prevent VS Code's built-in paste from interfering, add to `settings.json`:
 }
 ```
 
+Here are more info on [config options](./config.json5)
+
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for details on the layered architecture and VS Code APIs used.
