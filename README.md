@@ -1,6 +1,31 @@
 # Marker
 
-A VS Code extension for working with Markdown files.
+**Write Markdown at the speed of thought.**
+
+Marker turns VS Code into a full-featured Markdown editor — smart paste, instant formatting, living lists, and one-key tables. No menus, no dialogs, no context switching. Just keyboard shortcuts that do exactly what you expect.
+
+## Why
+
+VS Code's built-in Markdown support stops at syntax highlighting. Every time you paste a URL, insert an image, restructure a list, or build a table, you're hand-typing brackets and pipes. Marker eliminates that friction.
+
+## How
+
+Marker intercepts familiar shortcuts (`Cmd+V`, `Cmd+B`, `Enter`, `Tab`) and makes them Markdown-aware. It detects what's in your clipboard and what's under your cursor, then does the right thing — wrapping, linking, continuing, toggling — without you ever leaving the keyboard.
+
+## What
+
+A zero-config VS Code extension that adds 18 keyboard-driven Markdown commands. Pure TypeScript, no external runtime, ~170kb bundled.
+
+## Top Features
+
+- **Smart Paste** — paste a URL over text and get `[text](url)`. Paste an image and get `![alt](file.png)` with the file saved to disk. Paste a file path and get a clickable relative link.
+- **One-key formatting** — bold, italic, underline, strikethrough, code span, code block. All toggleable. Works on selection or word under cursor.
+- **Living lists** — Enter continues bullets and numbers. Tab/Shift+Tab indents and outdents. Empty item + Enter clears the marker.
+- **Heading cascade** — promote or demote a heading and all its sub-headings follow.
+- **Instant tables** — create from scratch or convert CSV/TSV/pipe-delimited text with delimiter auto-detection.
+- **Workspace-aware links** — file paths inside your workspace become relative links (CMD+click friendly). Outside paths get `file://` URLs. Cmd+Alt+V inverts the mode.
+- **HTML export** — export any Markdown file to a styled, standalone HTML document.
+- **Non-intrusive & fully configurable** — every feature can be individually disabled. Turn off smart paste, list continuation, tab override, or any formatting shortcut. Marker never gets in your way — disable what you don't need, keep what you love.
 
 ## Commands & Keyboard Shortcuts
 
