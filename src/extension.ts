@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import {
-  wrapWithLink, wrapWithImage, isUrl, buildImageFilename,
+  wrapWithLink, wrapWithImage, isUrl, isFilePath, shouldPasteAsLink, shouldUseRelativePath, RelativePathMode, filePathToMarkdownUrl, buildImageFilename,
   parseListPrefix, buildNextLinePrefix, NumberedListMode,
   toggleWrap, toggleHtmlWrap, findWrapperAround, findHtmlWrapperAround,
   findLinkAround,
@@ -78,18 +78,35 @@ function getPasteSelection(vscEditor: vscode.TextEditor): {
   return null;
 }
 
-async function pasteLink(): Promise<void> {
+async function pasteLink(invertRelative: boolean = false): Promise<void> {
   if (!isEnabled()) { return; }
   const vscEditor = vscode.window.activeTextEditor;
   if (!vscEditor) { return; }
 
   const clipboardText = await clipboard.readText();
-  if (!clipboardText || !isUrl(clipboardText.trim())) {
-    notify.showError('Clipboard does not contain a valid URL.');
+  if (!clipboardText) {
+    notify.showError('Clipboard does not contain a valid URL or file path.');
     return;
   }
 
-  const url = clipboardText.trim();
+  const trimmed = clipboardText.trim();
+  let url: string;
+  if (isUrl(trimmed)) {
+    url = trimmed;
+  } else if (isFilePath(trimmed)) {
+    const mode = getConfig<RelativePathMode>('pasteLink.relativePaths', 'auto');
+    const inWorkspace = isInWorkspace(trimmed);
+    const useRelative = shouldUseRelativePath(mode, invertRelative, inWorkspace);
+    if (useRelative) {
+      const currentFile = editor.getCurrentFilePath();
+      url = filePathToMarkdownUrl(toRelativePath(trimmed, currentFile));
+    } else {
+      url = filePathToMarkdownUrl(trimmed);
+    }
+  } else {
+    notify.showError('Clipboard does not contain a valid URL or file path.');
+    return;
+  }
   const info = getPasteSelection(vscEditor);
 
   if (!info) {
@@ -100,11 +117,18 @@ async function pasteLink(): Promise<void> {
   }
 
   if (info.existingLink) {
-    // Cursor inside existing link — update the URL
-    const updated = info.existingLink.isImage
-      ? wrapWithImage(info.existingLink.text, url)
-      : wrapWithLink(info.existingLink.text, url);
-    await vscEditor.edit(eb => eb.replace(info.selection, updated));
+    const cursorCol = vscEditor.selection.active.character;
+    if (cursorCol >= info.existingLink.textStart && cursorCol <= info.existingLink.textEnd) {
+      // Cursor inside link's display text — insert URL as plain text at cursor
+      const pos = vscEditor.selection.active;
+      await vscEditor.edit(eb => eb.insert(pos, url));
+    } else {
+      // Cursor inside link's URL part — update the URL
+      const updated = info.existingLink.isImage
+        ? wrapWithImage(info.existingLink.text, url)
+        : wrapWithLink(info.existingLink.text, url);
+      await vscEditor.edit(eb => eb.replace(info.selection, updated));
+    }
   } else {
     const markdownLink = wrapWithLink(info.text, url);
     await vscEditor.edit(eb => eb.replace(info.selection, markdownLink));
@@ -133,8 +157,10 @@ async function smartPaste(): Promise<void> {
     const info = getPasteSelection(vscEditor);
 
     if (info) {
-      // Text available + URL in clipboard → paste as link
-      if (getConfig<boolean>('pasteLink.enabled', true) && clipboardText && isUrl(clipboardText.trim())) {
+      // Text available + URL or file path in clipboard → paste as link
+      const trimmed = clipboardText?.trim() ?? '';
+      if (getConfig<boolean>('pasteLink.enabled', true) &&
+          shouldPasteAsLink(trimmed, !vscEditor.selection.isEmpty)) {
         await pasteLink();
         return;
       }
@@ -243,6 +269,61 @@ function getConfig<T>(key: string, defaultValue: T): T {
 /** Check if Marker is globally enabled */
 function isEnabled(): boolean {
   return getConfig<boolean>('enabled', true);
+}
+
+/**
+ * Check if a file path is inside any of the current VS Code workspace folders.
+ */
+function isInWorkspace(filePath: string): boolean {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders) { return false; }
+
+  let resolved = filePath;
+  // Expand ~/
+  if (resolved.startsWith('~/') || resolved === '~') {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    if (home) { resolved = path.join(home, resolved.slice(1)); }
+  }
+
+  // Normalize for comparison
+  resolved = path.resolve(resolved);
+
+  for (const folder of folders) {
+    const root = folder.uri.fsPath;
+    if (resolved.startsWith(root + path.sep) || resolved === root) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Resolve a file path to be relative to the current file's directory.
+ * Relative paths always work for CMD+click in VS Code, regardless of workspace.
+ * Falls back to original path if current file is unsaved or paths are on different drives.
+ */
+function toRelativePath(targetPath: string, currentFilePath: string | null): string {
+  if (!currentFilePath) { return targetPath; }
+
+  let resolved = targetPath;
+
+  // Expand ~/
+  if (resolved.startsWith('~/') || resolved === '~') {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    if (home) { resolved = path.join(home, resolved.slice(1)); }
+  }
+
+  // Only relativize absolute paths
+  if (!path.isAbsolute(resolved)) { return resolved; }
+
+  const currentDir = path.dirname(currentFilePath);
+  const relative = path.relative(currentDir, resolved);
+
+  // If still absolute (Windows: different drives), return original
+  if (path.isAbsolute(relative)) { return resolved; }
+
+  // Normalize to forward slashes for markdown
+  return relative.replace(/\\/g, '/');
 }
 
 async function onEnter(): Promise<void> {
@@ -850,8 +931,11 @@ function safe(fn: (...args: any[]) => Promise<void>): (...args: any[]) => Promis
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  // Set context key so keybindings only work when extension is alive
+  vscode.commands.executeCommand('setContext', 'marker.active', true);
+
   context.subscriptions.push(
-    vscode.commands.registerCommand('marker.pasteLink', safe(pasteLink)),
+    vscode.commands.registerCommand('marker.pasteLink', safe(() => pasteLink(true))),
     vscode.commands.registerCommand('marker.pasteImage', safe(pasteImage)),
     vscode.commands.registerCommand('marker.smartPaste', safe(smartPaste)),
     vscode.commands.registerCommand('marker.onEnter', safe(onEnter)),
@@ -876,4 +960,6 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-export function deactivate(): void {}
+export function deactivate(): void {
+  vscode.commands.executeCommand('setContext', 'marker.active', false);
+}

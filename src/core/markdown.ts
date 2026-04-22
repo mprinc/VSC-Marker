@@ -21,6 +21,8 @@ export interface LinkMatch {
   text: string;
   url: string;
   isImage: boolean;
+  textStart: number;
+  textEnd: number;
 }
 
 export function findLinkAround(lineText: string, cursorCol: number): LinkMatch | null {
@@ -32,16 +34,97 @@ export function findLinkAround(lineText: string, cursorCol: number): LinkMatch |
     const end = start + match[0].length;
     if (cursorCol >= start && cursorCol <= end) {
       const isImage = match[0].startsWith('!');
+      const prefix = isImage ? 2 : 1; // length of "![" or "["
+      const text = isImage ? match[2] : match[4];
       return {
         start,
         end,
-        text: isImage ? match[2] : match[4],
+        text,
         url: isImage ? match[3] : match[5],
         isImage,
+        textStart: start + prefix,
+        textEnd: start + prefix + text.length,
       };
     }
   }
   return null;
+}
+
+export function isFilePath(text: string): boolean {
+  // Reject multiline text
+  if (/[\n\r]/.test(text)) { return false; }
+  // Exclude URLs and other schemes
+  if (/^\w+:\/\//i.test(text)) { return false; }
+  // Absolute Unix path (at least 2 segments)
+  if (text.startsWith('/') && text.indexOf('/', 1) > 0) { return true; }
+  // Home-relative path
+  if (text.startsWith('~/') && text.length > 2) { return true; }
+  // Absolute Windows path (C:\ or C:/)
+  if (/^[A-Za-z]:[\\\/]/.test(text)) { return true; }
+  // Relative ./ or ../
+  if (/^\.\.?[\/\\]/.test(text)) { return true; }
+  // Has path separator + file extension
+  if (/[\/\\]/.test(text) && /\.\w{1,10}$/.test(text)) { return true; }
+  // Bare filename, domain, or IP-like (anything with a dot and no spaces)
+  if (!/\s/.test(text) && /\.\w{1,10}$/.test(text)) { return true; }
+  return false;
+}
+
+export type RelativePathMode = 'auto' | 'always' | 'never';
+
+/**
+ * Determine whether to use relative paths for a paste operation.
+ * - auto: relative if file is in workspace, absolute otherwise
+ * - always: always relative
+ * - never: always absolute (file://)
+ * Cmd+Alt+V inverts the result.
+ */
+export function shouldUseRelativePath(
+  mode: RelativePathMode,
+  invert: boolean,
+  isInWorkspace: boolean
+): boolean {
+  let useRelative: boolean;
+  switch (mode) {
+    case 'auto': useRelative = isInWorkspace; break;
+    case 'always': useRelative = true; break;
+    case 'never': useRelative = false; break;
+    default: useRelative = isInWorkspace;
+  }
+  return invert ? !useRelative : useRelative;
+}
+
+export function filePathToMarkdownUrl(filePath: string): string {
+  let url = filePath.replace(/\\/g, '/');
+  // Absolute Unix → file://
+  if (url.startsWith('/')) {
+    url = `file://${url}`;
+  } else if (/^[A-Za-z]:\//.test(url)) {
+    // Absolute Windows → file:///
+    url = `file:///${url}`;
+  }
+  // Encode chars that break markdown link syntax: spaces and parentheses
+  url = url.replace(/%/g, '%25');  // encode existing % first
+  url = url.replace(/ /g, '%20');
+  url = url.replace(/\(/g, '%28');
+  url = url.replace(/\)/g, '%29');
+  return url;
+}
+
+/**
+ * Decide whether clipboard content should trigger paste-as-link.
+ * URLs always create links (even with word-under-cursor).
+ * File paths require explicit text selection.
+ */
+export function shouldPasteAsLink(
+  clipboardText: string,
+  hasExplicitSelection: boolean
+): boolean {
+  const trimmed = clipboardText.trim();
+  if (!trimmed) { return false; }
+  if (isUrl(trimmed)) { return true; }
+  if (isFilePath(trimmed) && hasExplicitSelection) { return true; }
+  return false;
 }
 
 export function isUrl(text: string): boolean {
