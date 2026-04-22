@@ -9,7 +9,7 @@ All shortcuts are active only in Markdown files.
 | Command | Mac | Windows/Linux | Description |
 |---------|-----|---------------|-------------|
 | Smart Paste | `Cmd+V` | `Ctrl+V` | Auto-detects URL or image in clipboard and pastes accordingly |
-| Paste Link | `Cmd+Alt+V` | `Ctrl+Alt+V` | Wraps selected text as `[text](url)` with URL from clipboard |
+| Paste Link | `Cmd+Alt+V` | `Ctrl+Alt+V` | Wraps selected text as `[text](url)` — uses **opposite** path mode from Cmd+V (see below) |
 | Paste Image | `Cmd+Alt+I` | `Ctrl+Alt+I` | Saves clipboard image to file, inserts `![text](file.png)` |
 | Bold | `Cmd+B` | `Ctrl+B` | Toggle **bold** |
 | Italic | `Cmd+I` | `Ctrl+I` | Toggle *italic* |
@@ -31,7 +31,12 @@ All shortcuts are active only in Markdown files.
 
 - **No selection**: formatting and paste commands apply to the word under cursor
 - **Toggle off**: if cursor is inside an existing wrapper (`**`, `` ` ``, `<u>`, etc.), the command removes it
-- **Existing link**: if cursor is inside `[text](url)`, Paste Link updates the URL
+- **Existing link**: if cursor is inside `[text](url)`, Paste Link updates the URL; if cursor is in the display text, pastes as plain text
+- **File paths**: pasting a file path over selected text creates a markdown link. Path mode is controlled by `marker.pasteLink.relativePaths`:
+  - `"auto"` (default) — relative for files inside workspace, absolute (`file://`) for files outside
+  - `"always"` — always relative
+  - `"never"` — always absolute (`file://`)
+  - `Cmd+Alt+V` always **inverts** the mode — e.g., if Cmd+V produces relative, Cmd+Alt+V produces absolute
 - **Empty list item**: pressing Enter on an empty `- ` or `1. ` removes the marker
 - **Numbered lists**: auto-numbering supports `auto` mode (detects pattern) and `increment` mode
 
@@ -62,6 +67,15 @@ code --extensionDevelopmentPath=$(pwd)
 ```
 
 This opens a new VS Code window (Extension Development Host) with the extension loaded. Alternatively, open the project in VS Code and press `F5`.
+
+### Testing
+
+```bash
+npm test            # run all tests once
+npm run test:watch  # watch mode — re-runs on file changes
+```
+
+Tests cover all pure functions in `src/core/markdown.ts` (link wrapping, file path detection, paste decision logic, formatting toggles, list parsing, table generation, etc.). Run tests before building to catch regressions.
 
 ### VS Code settings
 

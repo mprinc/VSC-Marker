@@ -3,7 +3,7 @@
   "displayName": "Marker",
   "publisher": "mprinc",
   "description": "Markdown extension for pasting links and images over selected text",
-  "version": "0.0.8",
+  "version": "0.0.16",
   "repository": {
     "type": "git",
     "url": "https://github.com/mprinc/VSC-Marker"
@@ -102,104 +102,104 @@
         "command": "marker.pasteLink",
         "key": "ctrl+alt+v",
         "mac": "cmd+alt+v",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.pasteImage",
         "key": "ctrl+alt+i",
         "mac": "cmd+alt+i",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.smartPaste",
         "key": "ctrl+v",
         "mac": "cmd+v",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.onEnter",
         "key": "enter",
-        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode"
       },
       {
         "command": "marker.showPreview",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
-        "when": "editorLangId == markdown"
+        "when": "marker.active && editorLangId == markdown"
       },
       {
         "command": "marker.toggleBold",
         "key": "ctrl+b",
         "mac": "cmd+b",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleItalic",
         "key": "ctrl+i",
         "mac": "cmd+i",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleUnderline",
         "key": "ctrl+u",
         "mac": "cmd+u",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.createTable",
         "key": "ctrl+alt+t",
         "mac": "cmd+alt+t",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleStrikethrough",
         "key": "alt+s",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleCodeSpan",
         "key": "ctrl+e",
         "mac": "cmd+e",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleCodeBlock",
         "key": "ctrl+shift+e",
         "mac": "cmd+shift+e",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.headingUp",
         "key": "ctrl+shift+]",
         "mac": "cmd+shift+]",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.headingDown",
         "key": "ctrl+shift+[",
         "mac": "cmd+shift+[",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleTask",
         "key": "alt+c",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.indentList",
         "key": "tab",
-        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible"
       },
       {
         "command": "marker.outdentList",
         "key": "shift+tab",
-        "when": "editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible"
       },
       {
         "command": "marker.deleteImage",
         "key": "ctrl+shift+delete",
         "mac": "cmd+shift+backspace",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown"
       }
     ],
     "configuration": {
@@ -229,6 +229,17 @@
           "type": "boolean",
           "default": true,
           "description": "Auto-detect URL in clipboard and wrap selected text as Markdown link"
+        },
+        "marker.pasteLink.relativePaths": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "always", "never"],
+          "enumDescriptions": [
+            "Smart: relative paths for files inside workspace, absolute (file://) for files outside",
+            "Always use relative paths",
+            "Always use absolute paths (file://)"
+          ],
+          "description": "How to handle file paths when pasting links. Cmd+Alt+V inverts the behavior."
         },
         "marker.pasteImage.enabled": {
           "type": "boolean",
@@ -338,7 +349,9 @@
     "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
@@ -348,7 +361,8 @@
     "@typescript-eslint/parser": "^8.0.0",
     "esbuild": "^0.24.0",
     "eslint": "^9.0.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "markdown-it": "^14.1.1"
