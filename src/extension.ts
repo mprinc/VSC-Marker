@@ -931,9 +931,6 @@ function safe(fn: (...args: any[]) => Promise<void>): (...args: any[]) => Promis
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  // Set context key so keybindings only work when extension is alive
-  vscode.commands.executeCommand('setContext', 'marker.active', true);
-
   context.subscriptions.push(
     vscode.commands.registerCommand('marker.pasteLink', safe(() => pasteLink(true))),
     vscode.commands.registerCommand('marker.pasteImage', safe(pasteImage)),
@@ -958,6 +955,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('marker.exportHtml', safe(exportToHtml)),
     vscode.commands.registerCommand('marker.deleteImage', safe(deleteImageCmd))
   );
+
+  // Set context key AFTER commands are registered so keybindings
+  // cannot fire before the commands exist
+  vscode.commands.executeCommand('setContext', 'marker.active', true);
 }
 
 export function deactivate(): void {
