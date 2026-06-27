@@ -27,17 +27,19 @@ export function showPreview(context: vscode.ExtensionContext): void {
 
   const docKey = doc.uri.toString();
 
+  const viewColumn = editor.viewColumn ?? vscode.ViewColumn.One;
+
   // If panel already open for this doc, reveal it
   const existing = openPanels.get(docKey);
   if (existing) {
-    existing.reveal(vscode.ViewColumn.Beside);
+    existing.reveal(viewColumn);
     return;
   }
 
   const panel = vscode.window.createWebviewPanel(
     'marker.preview',
     `Preview: ${path.basename(doc.fileName)}`,
-    vscode.ViewColumn.Beside,
+    viewColumn,
     {
       enableScripts: false,
       localResourceRoots: [vscode.Uri.file(path.dirname(doc.fileName))],
