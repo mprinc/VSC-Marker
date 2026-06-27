@@ -589,6 +589,30 @@ describe('toggleWrap', () => {
   it('does not unwrap if text is just wrappers', () => {
     expect(toggleWrap('****', '**')).toBe('********');
   });
+
+  it('adds italic to bold text', () => {
+    expect(toggleWrap('**hello**', '*')).toBe('***hello***');
+  });
+
+  it('removes italic from bold+italic text', () => {
+    expect(toggleWrap('***hello***', '*')).toBe('**hello**');
+  });
+
+  it('adds bold to italic text', () => {
+    expect(toggleWrap('*hello*', '**')).toBe('***hello***');
+  });
+
+  it('removes bold from bold+italic text', () => {
+    expect(toggleWrap('***hello***', '**')).toBe('*hello*');
+  });
+
+  it('wraps plain text with italic', () => {
+    expect(toggleWrap('hello', '*')).toBe('*hello*');
+  });
+
+  it('removes italic from italic text', () => {
+    expect(toggleWrap('*hello*', '*')).toBe('hello');
+  });
 });
 
 describe('toggleHtmlWrap', () => {
@@ -729,3 +753,4 @@ describe('buildNextLinePrefix', () => {
     expect(prefix).toBe('');
   });
 });
+

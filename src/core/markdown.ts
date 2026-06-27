@@ -397,6 +397,25 @@ export function outdentLine(line: string, tabSize: number = 2): string {
 // --- Text formatting ---
 
 export function toggleWrap(text: string, wrapper: string): string {
+  // Asterisk wrappers (* and **) conflict because * is a prefix of **.
+  // Use bitwise approach: stars=1 → italic, stars=2 → bold, stars=3 → both.
+  if (wrapper === '*' || wrapper === '**') {
+    let leading = 0;
+    while (leading < text.length && text[leading] === '*') { leading++; }
+    let trailing = 0;
+    while (trailing < text.length && text[text.length - 1 - trailing] === '*') { trailing++; }
+    const stars = Math.min(leading, trailing);
+    const inner = stars > 0 ? text.slice(stars, -stars || undefined) : text;
+    if (inner.length === 0 && stars > 0) {
+      return `${wrapper}${text}${wrapper}`;
+    }
+    const wLen = wrapper.length; // 1 for italic, 2 for bold
+    const hasWrapper = (stars & wLen) !== 0;
+    const newStars = hasWrapper ? stars - wLen : stars + wLen;
+    const s = '*'.repeat(newStars);
+    return `${s}${inner}${s}`;
+  }
+
   if (text.startsWith(wrapper) && text.endsWith(wrapper) && text.length > wrapper.length * 2) {
     return text.slice(wrapper.length, -wrapper.length);
   }
