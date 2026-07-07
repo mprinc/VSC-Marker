@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+
+  <!-- Large yellow lightning bolt behind M (marker-drawn, rough edges) -->
+  <path d="M78,6 L48,56 L72,56 L42,118 L96,50 L70,50 L98,6 Z"
+        fill="#ffc53a" opacity="0.9" stroke="#e6b020" stroke-width="2"
+        stroke-linejoin="round"/>
+
+  <!-- Highlight stroke -->
+  <rect x="18" y="52" width="92" height="30" rx="5" fill="#ff6b35" opacity="0.5"
+        transform="rotate(-3 64 67)"/>
+
+  <!-- Letter M on top -->
+  <text x="64" y="86" text-anchor="middle" font-family="Arial Black, Impact, sans-serif"
+        font-weight="900" font-size="68" fill="#ffffff">M</text>
+</svg>

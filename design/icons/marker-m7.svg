@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+  <!-- v7: Sketch on white/paper background -->
+  <rect x="8" y="8" width="112" height="112" rx="6" fill="#f0ece4"/>
+  <!-- M-bolt outline in pencil gray -->
+  <path d="M20,106 L20,18 L48,18 L64,52 L82,18 L106,18 L106,52 L114,52 L86,106 L92,80 L80,80 L98,44 L98,24 L84,24 L64,58 L48,24 L38,24 L38,106 Z"
+        fill="none" stroke="#444444" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Left leg filled dark -->
+  <path d="M22,104 L22,20 L36,24 L36,104 Z" fill="#555555" opacity="0.7"/>
+  <!-- Pencil shading -->
+  <line x1="24" y1="28" x2="34" y2="32" stroke="#666" stroke-width="1.5"/>
+  <line x1="24" y1="38" x2="34" y2="42" stroke="#666" stroke-width="1.5"/>
+  <line x1="24" y1="48" x2="34" y2="52" stroke="#666" stroke-width="1.5"/>
+  <line x1="24" y1="58" x2="34" y2="62" stroke="#666" stroke-width="1.5"/>
+  <line x1="24" y1="68" x2="34" y2="72" stroke="#666" stroke-width="1.5"/>
+  <line x1="24" y1="78" x2="34" y2="82" stroke="#666" stroke-width="1.5"/>
+  <line x1="24" y1="88" x2="34" y2="92" stroke="#666" stroke-width="1.5"/>
+  <line x1="24" y1="98" x2="34" y2="102" stroke="#666" stroke-width="1.5"/>
+  <!-- Bolt shading -->
+  <line x1="84" y1="86" x2="90" y2="82" stroke="#666" stroke-width="1.5"/>
+  <line x1="82" y1="94" x2="88" y2="90" stroke="#666" stroke-width="1.5"/>
+</svg>

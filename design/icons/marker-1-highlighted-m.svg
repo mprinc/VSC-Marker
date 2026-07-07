@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Dark rounded background -->
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+
+  <!-- Highlight stroke behind M -->
+  <rect x="18" y="52" width="92" height="36" rx="6" fill="#ff6b35" opacity="0.85"
+        transform="rotate(-4 64 70)"/>
+
+  <!-- Letter M -->
+  <text x="64" y="84" text-anchor="middle" font-family="Arial Black, Impact, sans-serif"
+        font-weight="900" font-size="72" fill="#ffffff" letter-spacing="-2">M</text>
+</svg>

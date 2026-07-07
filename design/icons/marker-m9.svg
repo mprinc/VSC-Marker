@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+  <!-- v9: Clean minimalist - thin lines, no fill, just outline -->
+  <path d="M18,108 L18,16 L48,16 L64,52 L82,16 L108,16 L108,52 L116,52 L86,108 L92,80 L80,80 L100,44 L100,24 L86,24 L64,58 L48,24 L36,24 L36,108 Z"
+        fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Left leg subtle fill -->
+  <path d="M20,106 L20,18 L34,24 L34,106 Z" fill="#ffffff" opacity="0.3"/>
+</svg>

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Dark rounded background -->
+  <rect width="128" height="128" rx="20" fill="#1a1b2e"/>
+
+  <!-- Letter M -->
+  <text x="52" y="88" text-anchor="middle" font-family="Arial Black, Impact, sans-serif"
+        font-weight="900" font-size="76" fill="#e0e0e0" letter-spacing="-2">M</text>
+
+  <!-- Marker pen (diagonal, bottom-right) -->
+  <g transform="translate(78, 28) rotate(35)">
+    <!-- Pen body -->
+    <rect x="0" y="0" width="14" height="48" rx="3" fill="#ff6b35"/>
+    <!-- Pen cap -->
+    <rect x="1" y="-8" width="12" height="10" rx="2" fill="#cc5528"/>
+    <!-- Pen tip -->
+    <polygon points="2,48 12,48 7,60" fill="#444"/>
+    <!-- Pen stripe -->
+    <rect x="0" y="18" width="14" height="3" fill="#ffffff" opacity="0.3"/>
+  </g>
+</svg>

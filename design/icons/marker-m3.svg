@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+  <!-- v3: Yellow bolt coloring on right side, white left -->
+  <path d="M18,108 L18,16 L48,16 L64,52 L82,16 L108,16 L108,52 L116,52 L86,108 L92,80 L80,80 L100,44 L100,24 L86,24 L64,58 L48,24 L36,24 L36,108 Z"
+        fill="none" stroke="#e0e0e0" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Left leg fill white -->
+  <path d="M20,106 L20,18 L34,24 L34,106 Z" fill="#ffffff" opacity="0.55"/>
+  <!-- Bolt area filled yellow -->
+  <path d="M82,16 L108,16 L108,52 L116,52 L86,108 L92,80 L80,80 L100,44 L100,24 L86,24 L64,58 L64,52 Z"
+        fill="#ffc53a" opacity="0.35"/>
+  <!-- Shading -->
+  <line x1="22" y1="28" x2="32" y2="32" stroke="#888" stroke-width="1.5"/>
+  <line x1="22" y1="42" x2="32" y2="46" stroke="#888" stroke-width="1.5"/>
+  <line x1="22" y1="56" x2="32" y2="60" stroke="#888" stroke-width="1.5"/>
+  <line x1="22" y1="70" x2="32" y2="74" stroke="#888" stroke-width="1.5"/>
+  <line x1="22" y1="84" x2="32" y2="88" stroke="#888" stroke-width="1.5"/>
+  <line x1="22" y1="98" x2="32" y2="102" stroke="#888" stroke-width="1.5"/>
+</svg>

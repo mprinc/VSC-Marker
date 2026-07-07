@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+  <!-- v4: Filled shape approach - entire M-bolt as solid white shape -->
+  <!-- Outer M-bolt filled -->
+  <path d="M18,108 L18,16 L48,16 L64,52 L82,16 L108,16 L108,52 L116,52 L86,108 L92,80 L80,80 L100,44 L100,24 L86,24 L64,58 L48,24 L36,24 L36,108 Z"
+        fill="#ffffff" opacity="0.15" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Left leg darker fill -->
+  <path d="M19,107 L19,17 L35,24 L35,107 Z" fill="#ffffff" opacity="0.55"/>
+  <!-- Cross-hatch on left leg -->
+  <path d="M21,24 L33,28 M21,34 L33,38 M21,44 L33,48 M21,54 L33,58 M21,64 L33,68 M21,74 L33,78 M21,84 L33,88 M21,94 L33,98"
+        stroke="#999" stroke-width="1.5"/>
+  <!-- Bolt shading lines -->
+  <line x1="84" y1="84" x2="90" y2="80" stroke="#999" stroke-width="1.5"/>
+  <line x1="82" y1="92" x2="88" y2="88" stroke="#999" stroke-width="1.5"/>
+</svg>

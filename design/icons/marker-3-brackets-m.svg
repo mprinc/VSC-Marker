@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Dark rounded background -->
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+
+  <!-- Opening bracket [ -->
+  <text x="10" y="86" font-family="Courier New, monospace" font-weight="700"
+        font-size="64" fill="#ff6b35">[</text>
+
+  <!-- Letter M centered -->
+  <text x="64" y="86" text-anchor="middle" font-family="Arial Black, Impact, sans-serif"
+        font-weight="900" font-size="68" fill="#ffffff">M</text>
+
+  <!-- Closing bracket ] -->
+  <text x="88" y="86" font-family="Courier New, monospace" font-weight="700"
+        font-size="64" fill="#ff6b35">]</text>
+
+  <!-- Small (link) hint below -->
+  <text x="64" y="112" text-anchor="middle" font-family="Courier New, monospace"
+        font-size="22" fill="#ff6b35" opacity="0.6">(  )</text>
+</svg>

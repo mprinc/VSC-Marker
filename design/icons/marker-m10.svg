@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+  <!-- v10: Bold with yellow bolt side and white left -->
+  <!-- Left leg solid -->
+  <path d="M18,108 L18,16 L36,24 L36,108 Z" fill="#ffffff"/>
+  <!-- Left peak strokes -->
+  <path d="M18,16 L48,16 L64,52 L48,24 L36,24" fill="#ffffff" opacity="0.85"/>
+  <!-- Center V outline -->
+  <path d="M48,16 L64,52 L82,16" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M48,24 L64,58 L86,24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Right bolt part - yellow -->
+  <path d="M82,16 L108,16 L108,52 L116,52 L86,108 L92,80 L80,80 L100,44 L100,24 L86,24 L64,58 L64,52 Z"
+        fill="#ffc53a" stroke="#e6b020" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Bolt shading -->
+  <line x1="84" y1="84" x2="90" y2="80" stroke="#e6b020" stroke-width="1.5"/>
+  <line x1="82" y1="92" x2="88" y2="88" stroke="#e6b020" stroke-width="1.5"/>
+  <line x1="84" y1="100" x2="86" y2="96" stroke="#e6b020" stroke-width="1.5"/>
+</svg>

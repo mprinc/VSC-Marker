@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+
+  <!-- Highlight stroke -->
+  <rect x="16" y="52" width="94" height="32" rx="6" fill="#ff6b35" opacity="0.7"
+        transform="rotate(-4 64 68)"/>
+
+  <!-- M built from paths: left leg, V center, right leg is bolt -->
+  <!-- Left leg -->
+  <path d="M24,92 L24,30 L36,30 L36,92 Z" fill="#ffffff"/>
+  <!-- Center V -->
+  <path d="M36,30 L60,72 L84,30" fill="none" stroke="#ffffff" stroke-width="10"
+        stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- Right leg as lightning bolt (aligned with M's right stroke) -->
+  <path d="M84,30 L96,30 L96,50 L108,50 L86,80 L90,60 L78,60 L84,30 Z"
+        fill="#ffc53a" stroke="#e6b020" stroke-width="1" stroke-linejoin="round"/>
+</svg>

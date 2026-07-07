@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Dark rounded background -->
+  <rect width="128" height="128" rx="20" fill="#1a1b2e"/>
+
+  <!-- Subtle glow -->
+  <circle cx="64" cy="68" r="40" fill="#ff6b35" opacity="0.08"/>
+
+  <!-- Letter M -->
+  <text x="64" y="88" text-anchor="middle" font-family="Arial Black, Impact, sans-serif"
+        font-weight="900" font-size="74" fill="#ffffff">M</text>
+
+  <!-- Lightning bolt (top-right) -->
+  <polygon points="88,8 78,38 90,38 76,58 96,28 84,28" fill="#ffc53a"/>
+  <polygon points="88,8 78,38 90,38 76,58 96,28 84,28" fill="#ff6b35" opacity="0.3"/>
+</svg>
