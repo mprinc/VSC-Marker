@@ -745,7 +745,7 @@ async function indentListCmd(): Promise<void> {
   const vscEditor = vscode.window.activeTextEditor;
 
   // ALWAYS let VS Code handle the indent first — never block Tab
-  if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.tab', true)) {
+  if (!vscEditor || !isEnabled()) {
     await vscode.commands.executeCommand('editor.action.indentLines');
     return;
   }
@@ -762,7 +762,7 @@ async function outdentListCmd(): Promise<void> {
   const vscEditor = vscode.window.activeTextEditor;
 
   // ALWAYS let VS Code handle the outdent first — never block Shift+Tab
-  if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.tab', true)) {
+  if (!vscEditor || !isEnabled()) {
     await vscode.commands.executeCommand('editor.action.outdentLines');
     return;
   }
@@ -960,6 +960,141 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand('marker.deleteImage', safe(deleteImageCmd))
     );
 
+    // DocumentPasteEditProvider — replaces Cmd+V keybinding override.
+    // If extension host crashes, VS Code skips the provider and does default paste.
+    const pasteKind = vscode.DocumentDropOrPasteEditKind.Text.append('marker', 'smartPaste');
+    context.subscriptions.push(
+      vscode.languages.registerDocumentPasteEditProvider(
+        { language: 'markdown' },
+        {
+          async provideDocumentPasteEdits(document, ranges, dataTransfer, _context, token) {
+            if (!isEnabled() || !getConfig<boolean>('override.paste', true)) { return undefined; }
+
+            const textItem = dataTransfer.get('text/plain');
+            const range = ranges[0];
+
+            if (textItem) {
+              const raw = await textItem.asString();
+              if (token.isCancellationRequested) { return undefined; }
+              const trimmed = raw.trim();
+
+              if (shouldPasteAsLink(trimmed, !range.isEmpty)) {
+                let url: string;
+                if (isUrl(trimmed)) {
+                  url = trimmed;
+                } else if (isFilePath(trimmed)) {
+                  const mode = getConfig<RelativePathMode>('pasteLink.relativePaths', 'auto');
+                  const currentFile = document.uri.fsPath;
+                  const inWorkspace = isInWorkspace(trimmed);
+                  if (shouldUseRelativePath(mode, false, inWorkspace)) {
+                    url = filePathToMarkdownUrl(toRelativePath(trimmed, currentFile));
+                  } else {
+                    url = filePathToMarkdownUrl(trimmed);
+                  }
+                } else {
+                  return undefined;
+                }
+
+                if (!range.isEmpty) {
+                  // Selection → wrap as [selection](url)
+                  const selectedText = document.getText(range);
+                  const edit = new vscode.DocumentPasteEdit(
+                    wrapWithLink(selectedText, url),
+                    'Paste as Markdown Link',
+                    pasteKind
+                  );
+                  return [edit];
+                }
+
+                // No selection → check word under cursor
+                const pos = range.start;
+                const lineText = document.lineAt(pos.line).text;
+                const link = findLinkAround(lineText, pos.character);
+                if (link) {
+                  // Cursor inside existing link — update URL
+                  const linkRange = new vscode.Range(pos.line, link.start, pos.line, link.end);
+                  const updated = link.isImage
+                    ? wrapWithImage(link.text, url)
+                    : wrapWithLink(link.text, url);
+                  const edit = new vscode.DocumentPasteEdit('', 'Paste as Markdown Link', pasteKind);
+                  edit.additionalEdit = new vscode.WorkspaceEdit();
+                  edit.additionalEdit.replace(document.uri, linkRange, updated);
+                  return [edit];
+                }
+
+                const wordRange = document.getWordRangeAtPosition(pos);
+                if (wordRange) {
+                  // Word under cursor → wrap as [word](url)
+                  const word = document.getText(wordRange);
+                  const edit = new vscode.DocumentPasteEdit('', 'Paste as Markdown Link', pasteKind);
+                  edit.additionalEdit = new vscode.WorkspaceEdit();
+                  edit.additionalEdit.replace(document.uri, wordRange, wrapWithLink(word, url));
+                  return [edit];
+                }
+
+                // No word → insert bare URL
+                const edit = new vscode.DocumentPasteEdit(url, 'Paste Link', pasteKind);
+                return [edit];
+              }
+            }
+
+            // Image in clipboard (no text) → save as file and insert markdown image
+            if (getConfig<boolean>('pasteImage.enabled', true)) {
+              const imageItem = dataTransfer.get('image/png');
+              if (imageItem) {
+                const file = imageItem.asFile?.();
+                if (file) {
+                  const currentFile = document.uri.fsPath;
+                  if (document.isUntitled) { return undefined; }
+                  const dir = path.dirname(currentFile);
+
+                  const fileData = await file.data();
+                  if (token.isCancellationRequested) { return undefined; }
+
+                  let altText: string;
+                  let finalFilename: string;
+
+                  if (!range.isEmpty) {
+                    altText = document.getText(range);
+                    const filename = buildImageFilename(altText, 'png');
+                    let fp = path.join(dir, filename);
+                    finalFilename = filename;
+                    let counter = 1;
+                    while (await fileSystem.fileExists(fp)) {
+                      finalFilename = `${filename.replace(/\.png$/, '')}-${counter}.png`;
+                      fp = path.join(dir, finalFilename);
+                      counter++;
+                    }
+                  } else {
+                    const pattern = getConfig<string>('pasteImage.autoName', 'image-DDD');
+                    const result = await findNextAutoFilename(dir, pattern, 'png');
+                    finalFilename = result.filename;
+                    altText = result.altText;
+                  }
+
+                  const finalPath = path.join(dir, finalFilename);
+                  await fileSystem.writeFile(finalPath, new Uint8Array(fileData));
+
+                  const edit = new vscode.DocumentPasteEdit(
+                    wrapWithImage(altText, finalFilename),
+                    'Paste as Markdown Image',
+                    pasteKind
+                  );
+                  return [edit];
+                }
+              }
+            }
+
+            return undefined; // default paste
+          }
+        },
+        {
+          providedPasteEditKinds: [pasteKind],
+          pasteMimeTypes: ['text/plain', 'image/png']
+        }
+      )
+    );
+
     // Set context key AFTER commands are registered so keybindings
     // cannot fire before the commands exist.
     const syncActiveContext = () => {
@@ -997,10 +1132,33 @@ export function activate(context: vscode.ExtensionContext): void {
           const editor = vscode.window.activeTextEditor;
           if (!editor || editor.document !== e.document) { return; }
 
-          // Check if cursor is inside a list block with numbered items
           const cursorLine = editor.selection.active.line;
           if (cursorLine >= editor.document.lineCount) { return; }
           const allLines = getDocLines(editor.document);
+
+          // Clean up empty list items: if the line above cursor is an
+          // empty list prefix (e.g. "6. " with no content), clear it
+          // AND remove the extra blank line that Enter created.
+          // Result: "6. " → empty line, no extra newline.
+          if (cursorLine > 0) {
+            const prevLine = cursorLine - 1;
+            const prevParsed = parseListPrefix(allLines[prevLine]);
+            if (prevParsed.type !== 'none' && prevParsed.isEmpty) {
+              // Delete from start of prefix line through end of current line (the extra newline)
+              const deleteRange = new vscode.Range(prevLine, 0, cursorLine, allLines[cursorLine].length);
+              renumberBusy = true;
+              try {
+                await editor.edit(eb => eb.replace(deleteRange, ''));
+                // Cursor lands on the now-empty prevLine
+                const newPos = new vscode.Position(prevLine, 0);
+                editor.selection = new vscode.Selection(newPos, newPos);
+              } catch { /* best-effort */ }
+              finally { renumberBusy = false; }
+              return;
+            }
+          }
+
+          // Check if cursor is inside a list block with numbered items
           const [start, end] = findListBounds(allLines, cursorLine);
           let hasNumbered = false;
           for (let i = start; i <= end; i++) {

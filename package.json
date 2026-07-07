@@ -3,7 +3,7 @@
   "displayName": "Marker",
   "publisher": "mprinc",
   "description": "Markdown extension for pasting links and images over selected text",
-  "version": "0.0.16",
+  "version": "0.0.20",
   "repository": {
     "type": "git",
     "url": "https://github.com/mprinc/VSC-Marker"
@@ -19,6 +19,12 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "markdown",
+        "configuration": "./language-configuration.json"
+      }
+    ],
     "commands": [
       {
         "command": "marker.pasteLink",
@@ -102,104 +108,93 @@
         "command": "marker.pasteLink",
         "key": "ctrl+alt+v",
         "mac": "cmd+alt+v",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.pasteImage",
         "key": "ctrl+alt+i",
         "mac": "cmd+alt+i",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
-      },
-      {
-        "command": "marker.smartPaste",
-        "key": "ctrl+v",
-        "mac": "cmd+v",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
-      },
-      {
-        "command": "marker.onEnter",
-        "key": "enter",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.showPreview",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
-        "when": "marker.active && editorLangId == markdown"
+        "when": "config.marker.enabled && editorLangId == markdown"
       },
       {
         "command": "marker.toggleBold",
         "key": "ctrl+b",
         "mac": "cmd+b",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleItalic",
         "key": "ctrl+i",
         "mac": "cmd+i",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleUnderline",
         "key": "ctrl+u",
         "mac": "cmd+u",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.createTable",
         "key": "ctrl+alt+t",
         "mac": "cmd+alt+t",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleStrikethrough",
         "key": "alt+s",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleCodeSpan",
         "key": "ctrl+e",
         "mac": "cmd+e",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleCodeBlock",
         "key": "ctrl+shift+e",
         "mac": "cmd+shift+e",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.headingUp",
         "key": "ctrl+shift+]",
         "mac": "cmd+shift+]",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.headingDown",
         "key": "ctrl+shift+[",
         "mac": "cmd+shift+[",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.toggleTask",
         "key": "alt+c",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "marker.indentList",
         "key": "tab",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
+        "when": "config.marker.listIndent.mode == 'tab-override' && config.marker.enabled && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
       },
       {
         "command": "marker.outdentList",
         "key": "shift+tab",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
+        "when": "config.marker.listIndent.mode == 'tab-override' && config.marker.enabled && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
       },
       {
         "command": "marker.deleteImage",
         "key": "ctrl+shift+delete",
         "mac": "cmd+shift+backspace",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown"
+        "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
       }
     ],
     "configuration": {
@@ -215,10 +210,20 @@
           "default": true,
           "description": "Override Enter key for smart list continuation. When false, Enter behaves normally."
         },
-        "marker.override.tab": {
-          "type": "boolean",
-          "default": true,
-          "description": "Override Tab/Shift+Tab for list indent/outdent. When false, Tab behaves normally."
+        "marker.listIndent.mode": {
+          "type": "string",
+          "enum": [
+            "tab-override",
+            "auto-listener",
+            "manual"
+          ],
+          "enumDescriptions": [
+            "Tab/Shift+Tab override — best UX, instant indent. Risk: if extension host crashes, Tab is blocked until you set marker.enabled=false in Settings",
+            "No Tab override — native Tab inserts indent, Marker auto-renumbers via listener after 400ms. Crash-safe: Tab always works even if host dies",
+            "No Tab override, no auto-renumber — use marker.indentList / marker.outdentList from Command Palette or bind your own shortcut"
+          ],
+          "default": "tab-override",
+          "description": "How Tab/Shift+Tab interacts with list indentation"
         },
         "marker.override.paste": {
           "type": "boolean",
@@ -233,7 +238,11 @@
         "marker.pasteLink.relativePaths": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "always", "never"],
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
           "enumDescriptions": [
             "Smart: relative paths for files inside workspace, absolute (file://) for files outside",
             "Always use relative paths",
@@ -346,6 +355,13 @@
           "default": "sh",
           "description": "Default language for code blocks (e.g. sh, typescript, python)"
         }
+      }
+    },
+    "configurationDefaults": {
+      "[markdown]": {
+        "editor.pasteAs.preferences": [
+          "text.marker.smartPaste"
+        ]
       }
     }
   },
