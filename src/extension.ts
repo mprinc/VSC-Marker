@@ -77,16 +77,13 @@ function getPasteSelection(vscEditor: vscode.TextEditor): {
   return null;
 }
 
-async function pasteLink(invertRelative: boolean = false): Promise<void> {
-  if (!isEnabled()) { return; }
+async function pasteLink(invertRelative: boolean = false): Promise<boolean> {
+  if (!isEnabled()) { return false; }
   const vscEditor = vscode.window.activeTextEditor;
-  if (!vscEditor) { return; }
+  if (!vscEditor) { return false; }
 
   const clipboardText = await clipboard.readText();
-  if (!clipboardText) {
-    notify.showError('Clipboard does not contain a valid URL or file path.');
-    return;
-  }
+  if (!clipboardText) { return false; }
 
   const trimmed = clipboardText.trim();
   let url: string;
@@ -103,8 +100,7 @@ async function pasteLink(invertRelative: boolean = false): Promise<void> {
       url = filePathToMarkdownUrl(trimmed);
     }
   } else {
-    notify.showError('Clipboard does not contain a valid URL or file path.');
-    return;
+    return false;
   }
   const info = getPasteSelection(vscEditor);
 
@@ -112,7 +108,7 @@ async function pasteLink(invertRelative: boolean = false): Promise<void> {
     // No selection, no word under cursor — insert bare URL at cursor
     const pos = vscEditor.selection.active;
     await vscEditor.edit(eb => eb.insert(pos, url));
-    return;
+    return true;
   }
 
   if (info.existingLink) {
@@ -132,6 +128,7 @@ async function pasteLink(invertRelative: boolean = false): Promise<void> {
     const markdownLink = wrapWithLink(info.text, url);
     await vscEditor.edit(eb => eb.replace(info.selection, markdownLink));
   }
+  return true;
 }
 
 async function smartPaste(): Promise<void> {
@@ -160,18 +157,13 @@ async function smartPaste(): Promise<void> {
       const trimmed = clipboardText?.trim() ?? '';
       if (getConfig<boolean>('pasteLink.enabled', true) &&
           shouldPasteAsLink(trimmed, !vscEditor.selection.isEmpty)) {
-        await pasteLink();
-        return;
+        if (await pasteLink()) { return; }
       }
     }
 
     // Image in clipboard → paste as image (works with or without selection)
     if (getConfig<boolean>('pasteImage.enabled', true) && !clipboardText) {
-      const imageData = await clipboard.readImage();
-      if (imageData) {
-        await pasteImage();
-        return;
-      }
+      if (await pasteImage()) { return; }
     }
 
     // Fallback: default paste
@@ -181,22 +173,16 @@ async function smartPaste(): Promise<void> {
   }
 }
 
-async function pasteImage(): Promise<void> {
-  if (!isEnabled()) { return; }
+async function pasteImage(): Promise<boolean> {
+  if (!isEnabled()) { return false; }
   const vscEditor = vscode.window.activeTextEditor;
-  if (!vscEditor) { return; }
+  if (!vscEditor) { return false; }
 
   const currentFile = editor.getCurrentFilePath();
-  if (!currentFile) {
-    notify.showError('Save the file first. Image needs to be placed in the same folder.');
-    return;
-  }
+  if (!currentFile) { return false; }
 
   const imageData = await clipboard.readImage();
-  if (!imageData) {
-    notify.showError('Clipboard does not contain an image.');
-    return;
-  }
+  if (!imageData) { return false; }
 
   const dir = fileSystem.getDirname(currentFile);
   const info = getPasteSelection(vscEditor);
@@ -232,6 +218,7 @@ async function pasteImage(): Promise<void> {
   const insertAt = info ? info.selection : new vscode.Selection(vscEditor.selection.active, vscEditor.selection.active);
   await vscEditor.edit(eb => eb.replace(insertAt, markdownImage));
   notify.showInfo(`Image saved as ${finalFilename}`);
+  return true;
 }
 
 /**
@@ -924,7 +911,7 @@ async function deleteImageCmd(): Promise<void> {
  * @param fallbackCmd — VS Code default command to execute if handler throws,
  *   so the standard key behavior is never blocked.
  */
-function safe(fn: (...args: any[]) => Promise<void>, fallbackCmd?: string): (...args: any[]) => Promise<void> {
+function safe(fn: (...args: any[]) => Promise<any>, fallbackCmd?: string): (...args: any[]) => Promise<void> {
   return async (...args: any[]) => {
     try {
       await fn(...args);
@@ -939,95 +926,104 @@ function safe(fn: (...args: any[]) => Promise<void>, fallbackCmd?: string): (...
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  context.subscriptions.push(
-    vscode.commands.registerCommand('marker.pasteLink', safe(() => pasteLink(true))),
-    vscode.commands.registerCommand('marker.pasteImage', safe(pasteImage)),
-    vscode.commands.registerCommand('marker.smartPaste', safe(smartPaste, 'editor.action.clipboardPasteAction')),
-    vscode.commands.registerCommand('marker.onEnter', safe(onEnter, 'type', /* Enter fallback */)),
-    vscode.commands.registerCommand('marker.showPreview', safe(async () => {
-      if (!isEnabled() || !getConfig<boolean>('preview.enabled', true)) {
-        await vscode.commands.executeCommand('markdown.showPreview');
-        return;
-      }
-      showPreview(context);
-    }, 'markdown.showPreview')),
-    vscode.commands.registerCommand('marker.toggleBold', safe(() => toggleFormat('**', false, 'formatting.bold'))),
-    vscode.commands.registerCommand('marker.toggleItalic', safe(() => toggleFormat('*', false, 'formatting.italic'))),
-    vscode.commands.registerCommand('marker.toggleUnderline', safe(() => toggleFormat('u', true, 'formatting.underline'))),
-    vscode.commands.registerCommand('marker.toggleStrikethrough', safe(() => toggleFormat('~~', false, 'formatting.strikethrough'))),
-    vscode.commands.registerCommand('marker.toggleCodeSpan', safe(toggleCodeSpanCmd)),
-    vscode.commands.registerCommand('marker.toggleCodeBlock', safe(toggleCodeBlockCmd)),
-    vscode.commands.registerCommand('marker.headingUp', safe(() => changeHeadingLevel('up'))),
-    vscode.commands.registerCommand('marker.headingDown', safe(() => changeHeadingLevel('down'))),
-    vscode.commands.registerCommand('marker.toggleTask', safe(toggleTaskCmd)),
-    vscode.commands.registerCommand('marker.indentList', safe(indentListCmd, 'editor.action.indentLines')),
-    vscode.commands.registerCommand('marker.outdentList', safe(outdentListCmd, 'editor.action.outdentLines')),
-    vscode.commands.registerCommand('marker.createTable', safe(createTable)),
-    vscode.commands.registerCommand('marker.exportHtml', safe(exportToHtml)),
-    vscode.commands.registerCommand('marker.deleteImage', safe(deleteImageCmd))
-  );
+  // FIRST: clear any stale marker.active from a previous crash.
+  // Context keys survive extension host crashes (they live in the renderer),
+  // so a stale `true` would let keybindings fire before commands exist.
+  vscode.commands.executeCommand('setContext', 'marker.active', false);
 
-  // Set context key AFTER commands are registered so keybindings
-  // cannot fire before the commands exist.
-  // Sync with marker.enabled so that when disabled, all keybindings
-  // fall through to VS Code defaults natively.
-  const syncActiveContext = () => {
-    const enabled = vscode.workspace.getConfiguration('marker').get<boolean>('enabled', true);
-    vscode.commands.executeCommand('setContext', 'marker.active', enabled);
-  };
-  syncActiveContext();
-
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('marker.enabled')) {
-        syncActiveContext();
-      }
-    }),
-
-    // Auto-renumber lists on ANY document change (delete, cut, paste,
-    // manual indent edit, etc.). Debounced — heavy check runs only after
-    // 400ms of inactivity, not on every keystroke.
-    vscode.workspace.onDidChangeTextDocument(e => {
-      if (renumberBusy) { return; }
-      if (e.document.languageId !== 'markdown') { return; }
-      if (e.contentChanges.length === 0) { return; }
-      // Never interfere with Undo/Redo — VS Code system operations are sacred
-      if (e.reason === vscode.TextDocumentChangeReason.Undo ||
-          e.reason === vscode.TextDocumentChangeReason.Redo) { return; }
-
-      if (renumberTimer) { clearTimeout(renumberTimer); }
-      renumberTimer = setTimeout(async () => {
-        if (skipNextDebounce) { skipNextDebounce = false; return; }
-        if (renumberBusy) { return; }
-        const cooldown = getConfig<number>('autoList.numbered.renumberCooldownMs', 1000);
-        if (cooldown > 0 && Date.now() - lastRenumberTime < cooldown) { return; }
-        if (!isEnabled()) { return; }
-
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document !== e.document) { return; }
-
-        // Check if cursor is inside a list block with numbered items
-        const cursorLine = editor.selection.active.line;
-        if (cursorLine >= editor.document.lineCount) { return; }
-        const allLines = getDocLines(editor.document);
-        const [start, end] = findListBounds(allLines, cursorLine);
-        let hasNumbered = false;
-        for (let i = start; i <= end; i++) {
-          if (parseListPrefix(allLines[i]).type === 'number') {
-            hasNumbered = true;
-            break;
-          }
+  try {
+    context.subscriptions.push(
+      vscode.commands.registerCommand('marker.pasteLink', safe(() => pasteLink(true))),
+      vscode.commands.registerCommand('marker.pasteImage', safe(pasteImage)),
+      vscode.commands.registerCommand('marker.smartPaste', safe(smartPaste, 'editor.action.clipboardPasteAction')),
+      vscode.commands.registerCommand('marker.onEnter', safe(onEnter, 'type', /* Enter fallback */)),
+      vscode.commands.registerCommand('marker.showPreview', safe(async () => {
+        if (!isEnabled() || !getConfig<boolean>('preview.enabled', true)) {
+          await vscode.commands.executeCommand('markdown.showPreview');
+          return;
         }
-        if (!hasNumbered) { return; }
+        showPreview(context);
+      }, 'markdown.showPreview')),
+      vscode.commands.registerCommand('marker.toggleBold', safe(() => toggleFormat('**', false, 'formatting.bold'))),
+      vscode.commands.registerCommand('marker.toggleItalic', safe(() => toggleFormat('*', false, 'formatting.italic'))),
+      vscode.commands.registerCommand('marker.toggleUnderline', safe(() => toggleFormat('u', true, 'formatting.underline'))),
+      vscode.commands.registerCommand('marker.toggleStrikethrough', safe(() => toggleFormat('~~', false, 'formatting.strikethrough'))),
+      vscode.commands.registerCommand('marker.toggleCodeSpan', safe(toggleCodeSpanCmd)),
+      vscode.commands.registerCommand('marker.toggleCodeBlock', safe(toggleCodeBlockCmd)),
+      vscode.commands.registerCommand('marker.headingUp', safe(() => changeHeadingLevel('up'))),
+      vscode.commands.registerCommand('marker.headingDown', safe(() => changeHeadingLevel('down'))),
+      vscode.commands.registerCommand('marker.toggleTask', safe(toggleTaskCmd)),
+      vscode.commands.registerCommand('marker.indentList', safe(indentListCmd, 'editor.action.indentLines')),
+      vscode.commands.registerCommand('marker.outdentList', safe(outdentListCmd, 'editor.action.outdentLines')),
+      vscode.commands.registerCommand('marker.createTable', safe(createTable)),
+      vscode.commands.registerCommand('marker.exportHtml', safe(exportToHtml)),
+      vscode.commands.registerCommand('marker.deleteImage', safe(deleteImageCmd))
+    );
 
-        renumberBusy = true;
-        try {
-          await renumberSurroundingList(editor);
-        } catch { /* best-effort */ }
-        finally { renumberBusy = false; }
-      }, 400);
-    })
-  );
+    // Set context key AFTER commands are registered so keybindings
+    // cannot fire before the commands exist.
+    const syncActiveContext = () => {
+      const enabled = vscode.workspace.getConfiguration('marker').get<boolean>('enabled', true);
+      vscode.commands.executeCommand('setContext', 'marker.active', enabled);
+    };
+    syncActiveContext();
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('marker.enabled')) {
+          syncActiveContext();
+        }
+      }),
+
+      // Auto-renumber lists on ANY document change (delete, cut, paste,
+      // manual indent edit, etc.). Debounced — heavy check runs only after
+      // 400ms of inactivity, not on every keystroke.
+      vscode.workspace.onDidChangeTextDocument(e => {
+        if (renumberBusy) { return; }
+        if (e.document.languageId !== 'markdown') { return; }
+        if (e.contentChanges.length === 0) { return; }
+        // Never interfere with Undo/Redo — VS Code system operations are sacred
+        if (e.reason === vscode.TextDocumentChangeReason.Undo ||
+            e.reason === vscode.TextDocumentChangeReason.Redo) { return; }
+
+        if (renumberTimer) { clearTimeout(renumberTimer); }
+        renumberTimer = setTimeout(async () => {
+          if (skipNextDebounce) { skipNextDebounce = false; return; }
+          if (renumberBusy) { return; }
+          const cooldown = getConfig<number>('autoList.numbered.renumberCooldownMs', 1000);
+          if (cooldown > 0 && Date.now() - lastRenumberTime < cooldown) { return; }
+          if (!isEnabled()) { return; }
+
+          const editor = vscode.window.activeTextEditor;
+          if (!editor || editor.document !== e.document) { return; }
+
+          // Check if cursor is inside a list block with numbered items
+          const cursorLine = editor.selection.active.line;
+          if (cursorLine >= editor.document.lineCount) { return; }
+          const allLines = getDocLines(editor.document);
+          const [start, end] = findListBounds(allLines, cursorLine);
+          let hasNumbered = false;
+          for (let i = start; i <= end; i++) {
+            if (parseListPrefix(allLines[i]).type === 'number') {
+              hasNumbered = true;
+              break;
+            }
+          }
+          if (!hasNumbered) { return; }
+
+          renumberBusy = true;
+          try {
+            await renumberSurroundingList(editor);
+          } catch { /* best-effort */ }
+          finally { renumberBusy = false; }
+        }, 400);
+      })
+    );
+  } catch (err) {
+    // Activation failed — keep marker.active=false so keybindings
+    // fall through to VS Code defaults and system keys are never blocked.
+    console.error('[Marker] Activation failed:', err);
+  }
 }
 
 export function deactivate(): void {
