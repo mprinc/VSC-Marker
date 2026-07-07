@@ -31,6 +31,44 @@
   //    Cmd+Shift+P → "Preferences: Open User Settings (JSON)"
   // ============================================================
 
+  // ─── VS CODE PASTE SYSTEM (REQUIRED FOR SMART PASTE) ──────
+  // Marker v0.0.17+ uses DocumentPasteEditProvider instead of Cmd+V
+  // keybinding override. This prevents paste from being blocked when
+  // the extension host crashes.
+  //
+  // IMPORTANT: These are VS Code settings, NOT Marker settings.
+  // They must be enabled for Marker's smart paste to work.
+  //
+  // editor.pasteAs.enabled: master switch for ALL paste providers.
+  //   If false, VS Code ignores all DocumentPasteEditProviders.
+  //   Default: true. If you set it to false previously (to avoid
+  //   conflicts with old keybinding approach), re-enable it.
+  "editor.pasteAs.enabled": true,
+
+  // editor.pasteAs.preferences: which paste provider kind to auto-apply.
+  //   Our provider registers kind "text.marker.smartPaste":
+  //     - "text" = VS Code built-in base (DocumentDropOrPasteEditKind.Text)
+  //     - "markdown" = our namespace (flexible, our choice)
+  //     - "smartPaste" = our feature name (flexible, our choice)
+  //   When this matches, VS Code auto-applies our provider without
+  //   showing a paste widget. If empty [] or missing, VS Code does
+  //   plain paste and shows widget with alternatives.
+  //
+  //   Set per-language via [markdown] scope so it only affects .md files:
+  //   "[markdown]": {
+  //     "editor.pasteAs.preferences": ["text.marker.smartPaste"]
+  //   }
+  //
+  //   Marker sets this via configurationDefaults in package.json,
+  //   but user settings OVERRIDE configurationDefaults. If you have
+  //   "editor.pasteAs.preferences": [] in your settings, delete it
+  //   or set it explicitly for markdown.
+
+  // Also disable VS Code's built-in markdown file paste if it
+  // conflicts with Marker's image paste:
+  // "markdown.editor.filePaste.enabled": "never",
+  // "markdown.editor.filePaste.copyIntoWorkspace": "never",
+
   // ─── MASTER SWITCH ─────────────────────────────────────────
   // Disables ALL Marker functionality.
   // All intercepted keys (Enter, Tab, Cmd+V) fall through to VS Code defaults.
@@ -47,14 +85,23 @@
   //       for ALL extensions listening (Copilot tries to process the change)
   "marker.override.enter": true,
 
-  // Tab key: list indentation (only on list lines, otherwise normal tab)
-  // Risk: conflicts with Copilot inline suggestions (Tab = accept suggestion)
-  //       generates editor.edit() changes that Copilot processes
-  "marker.override.tab": true,
+  // Tab key: how list indentation works.
+  // Three modes:
+  //   "tab-override"   — Tab/Shift+Tab override. Best UX (instant indent).
+  //                      Risk: if extension host crashes, Tab is blocked until
+  //                      you set marker.enabled=false in Settings.
+  //   "auto-listener"  — No Tab override. Native Tab inserts indent, Marker
+  //                      auto-renumbers via onDidChangeTextDocument listener
+  //                      after 400ms. Crash-safe: Tab always works.
+  //   "manual"         — No Tab override, no auto-renumber on Tab. Use
+  //                      marker.indentList / marker.outdentList from Command
+  //                      Palette or bind your own shortcut in keybindings.json.
+  "marker.listIndent.mode": "auto-listener",
 
   // Cmd+V / Ctrl+V: smart paste (auto-detect URL or image in clipboard)
-  // Risk: reads clipboard (async), may spawn osascript for image detection,
-  //       generates editor.edit() that triggers other extensions
+  // v0.0.17+: uses DocumentPasteEditProvider (no keybinding override).
+  // Requires editor.pasteAs.enabled: true (see VS CODE PASTE SYSTEM above).
+  // If extension host crashes, default paste works — never blocked.
   "marker.override.paste": true,
 
   // ─── PASTE SUB-FEATURES ────────────────────────────────────

@@ -45,8 +45,8 @@ All shortcuts are active only in Markdown files.
 | Heading Up | `Cmd+Shift+]` | `Ctrl+Shift+]` | Increase heading level (with cascading sub-headings) |
 | Heading Down | `Cmd+Shift+[` | `Ctrl+Shift+[` | Decrease heading level (with cascading sub-headings) |
 | Toggle Task | `Alt+C` | `Alt+C` | Toggle `[ ]` / `[x]` checkbox (converts plain bullets too) |
-| Indent List | `Tab` | `Tab` | Indent list item |
-| Outdent List | `Shift+Tab` | `Shift+Tab` | Outdent list item |
+| Indent List | `Tab` | `Tab` | Indent list item (requires `marker.listIndent.mode: "tab-override"`) |
+| Outdent List | `Shift+Tab` | `Shift+Tab` | Outdent list item (requires `marker.listIndent.mode: "tab-override"`) |
 | Create Table | `Cmd+Alt+T` | `Ctrl+Alt+T` | Create empty table or convert selected text to table |
 | Preview | `Cmd+Shift+V` | `Ctrl+Shift+V` | Live markdown preview in side panel |
 | Export HTML | — | — | Export current file to HTML (via Command Palette) |
@@ -104,16 +104,22 @@ Tests cover all pure functions in `src/core/markdown.ts` (link wrapping, file pa
 
 ### VS Code settings
 
-To prevent VS Code's built-in paste from interfering, add to `settings.json`:
+Marker uses VS Code's `DocumentPasteEditProvider` for smart paste. Add to `settings.json`:
 
-```json
+```jsonc
 {
-  "markdown.editor.filePaste.copyIntoWorkspace": "never",
-  "editor.pasteAs.enabled": false
+  "[markdown]": {
+    // required: enables paste providers (Marker uses DocumentPasteEditProvider)
+    "editor.pasteAs.enabled": true,
+    // auto-applies Marker's smart paste (URL→link, image→file) without widget
+    "editor.pasteAs.preferences": ["text.marker.smartPaste"]
+  },
+  // disables VS Code's built-in image paste (Marker has its own)
+  "markdown.editor.filePaste.copyIntoWorkspace": "never"
 }
 ```
 
-Here are more info on [config options](./config.json5)
+See [config.json5](./config.json5) for all Marker settings and detailed explanations.
 
 ## Architecture
 
