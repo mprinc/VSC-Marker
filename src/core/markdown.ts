@@ -382,11 +382,23 @@ export function toggleTaskCheck(line: string): string {
 
 // --- List indentation ---
 
-export function indentLine(line: string, tabSize: number = 2): string {
-  return ' '.repeat(tabSize) + line;
+/** Compute visual width of a whitespace string (tabs expand to tabSize columns). */
+export function visualIndent(indent: string, tabSize: number): number {
+  let w = 0;
+  for (const ch of indent) {
+    w += ch === '\t' ? tabSize - (w % tabSize) : 1;
+  }
+  return w;
+}
+
+export function indentLine(line: string, tabSize: number = 2, useTabs: boolean = false): string {
+  return (useTabs ? '\t' : ' '.repeat(tabSize)) + line;
 }
 
 export function outdentLine(line: string, tabSize: number = 2): string {
+  if (line.startsWith('\t')) {
+    return line.substring(1);
+  }
   const match = line.match(/^(\s+)/);
   if (!match) { return line; }
   const currentIndent = match[1].length;
@@ -578,4 +590,119 @@ export function buildNextLinePrefix(
   }
 
   return '';
+}
+
+/**
+ * Find the start and end line indices (inclusive) of the contiguous list
+ * block containing `lineIndex`. Stops at blank lines or document edges.
+ */
+export function findListBounds(lines: string[], lineIndex: number): [number, number] {
+  const isListContent = (line: string) =>
+    line.trim() !== '' && (parseListPrefix(line).type !== 'none' || /^\s/.test(line));
+
+  let start = lineIndex;
+  let end = lineIndex;
+  for (let i = lineIndex - 1; i >= 0; i--) {
+    if (!isListContent(lines[i])) { break; }
+    start = i;
+  }
+  for (let i = lineIndex + 1; i < lines.length; i++) {
+    if (!isListContent(lines[i])) { break; }
+    end = i;
+  }
+  return [start, end];
+}
+
+/**
+ * Renumber ALL numbered list items within [startLine..endLine].
+ *
+ * Groups items by visual indent width. Each group's counter resets when a
+ * shallower item appears (= new parent → new sub-list).
+ *
+ * Respects `mode`:
+ *   - 'increment': always 1, 2, 3, ...
+ *   - 'auto': detects pattern from first two siblings in each group.
+ *             If both have the same number → keep that number for all.
+ *             Otherwise → sequential 1, 2, 3, ...
+ *
+ * Returns a Map of lineIndex → newText for lines that need to change.
+ */
+export function renumberList(
+  lines: string[],
+  startLine: number,
+  endLine: number,
+  tabSize: number,
+  mode: NumberedListMode
+): Map<number, string> {
+  const changes = new Map<number, string>();
+
+  // Per indent-width tracking
+  const counters = new Map<number, number>();
+  const autoInfo = new Map<number, { first: number; second: number | null }>();
+  // Tracks whether a group was reset by a parent (→ start from 1)
+  // vs. first encounter at block boundary (→ preserve starting number)
+  const wasReset = new Set<number>();
+
+  for (let i = startLine; i <= endLine; i++) {
+    const parsed = parseListPrefix(lines[i]);
+    if (parsed.type !== 'number') { continue; }
+
+    const w = visualIndent(parsed.indent, tabSize);
+
+    // Reset deeper counters — a shallower item means new sub-groups below
+    for (const cw of [...counters.keys()]) {
+      if (cw > w) { counters.delete(cw); autoInfo.delete(cw); wasReset.add(cw); }
+    }
+
+    // Increment (or init) counter for this width
+    const count = (counters.get(w) ?? 0) + 1;
+    counters.set(w, count);
+
+    // Track first/second for auto-detect
+    if (!autoInfo.has(w)) {
+      // First encounter: check if this is a sub-list (has parent above)
+      let hasParent = false;
+      for (const cw of counters.keys()) {
+        if (cw < w) { hasParent = true; break; }
+      }
+      if (hasParent) { wasReset.add(w); } // sub-list → start from 1
+      autoInfo.set(w, { first: parsed.number!, second: null });
+    } else if (autoInfo.get(w)!.second === null) {
+      autoInfo.get(w)!.second = parsed.number!;
+    }
+
+    // Compute the correct number
+    let newNum: number;
+    if (mode === 'increment') {
+      newNum = count;
+    } else {
+      let { first, second } = autoInfo.get(w)!;
+
+      // For the first item in a group, peek ahead to detect the pattern
+      if (second === null) {
+        for (let j = i + 1; j <= endLine; j++) {
+          const next = parseListPrefix(lines[j]);
+          if (next.type !== 'number') { continue; }
+          const nw = visualIndent(next.indent, tabSize);
+          if (nw < w) { break; }
+          if (nw === w) { second = next.number!; autoInfo.get(w)!.second = second; break; }
+        }
+      }
+
+      if (second !== null && first === second) {
+        newNum = first; // keep-same pattern (e.g. 1. 1. 1.)
+      } else if (wasReset.has(w)) {
+        newNum = count; // reset group → start from 1
+      } else {
+        newNum = first + (count - 1); // boundary group → preserve starting number, fix gaps
+      }
+      // Don't clear wasReset here — it applies to the entire group
+    }
+
+    if (newNum !== parsed.number) {
+      changes.set(i, lines[i].replace(/^(\s*)\d+\./, `$1${newNum}.`));
+    }
+  }
+
+  return changes;
 }

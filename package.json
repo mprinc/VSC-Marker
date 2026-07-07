@@ -188,12 +188,12 @@
       {
         "command": "marker.indentList",
         "key": "tab",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
       },
       {
         "command": "marker.outdentList",
         "key": "shift+tab",
-        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible"
+        "when": "marker.active && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
       },
       {
         "command": "marker.deleteImage",
@@ -273,6 +273,13 @@
             "Always increment the number"
           ],
           "description": "How to determine the next number in a numbered list"
+        },
+        "marker.autoList.numbered.renumberCooldownMs": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Cooldown (ms) after auto-renumbering before allowing another debounce-triggered renumber. Prevents ping-pong with other extensions. Set to 0 to disable."
         },
         "marker.formatting.bold": {
           "type": "boolean",

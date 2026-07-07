@@ -13,6 +13,8 @@ import {
   toggleWrap, toggleHtmlWrap,
   findWrapperAround, findHtmlWrapperAround,
   parseListPrefix, getNextNumber, buildNextLinePrefix,
+  findListBounds, renumberList,
+  visualIndent,
 } from './markdown';
 
 // ─── wrapWithLink / wrapWithImage ────────────────────────────────────
@@ -551,6 +553,25 @@ describe('toggleTaskCheck', () => {
 
 // ─── Indentation ─────────────────────────────────────────────────────
 
+describe('visualIndent', () => {
+  it('counts spaces', () => {
+    expect(visualIndent('    ', 4)).toBe(4);
+  });
+
+  it('counts tabs as tabSize width', () => {
+    expect(visualIndent('\t', 4)).toBe(4);
+    expect(visualIndent('\t\t', 4)).toBe(8);
+  });
+
+  it('handles mixed tabs and spaces', () => {
+    expect(visualIndent('\t  ', 4)).toBe(6);
+  });
+
+  it('returns 0 for empty string', () => {
+    expect(visualIndent('', 4)).toBe(0);
+  });
+});
+
 describe('indentLine', () => {
   it('adds spaces', () => {
     expect(indentLine('- item', 2)).toBe('  - item');
@@ -558,6 +579,14 @@ describe('indentLine', () => {
 
   it('uses custom tab size', () => {
     expect(indentLine('- item', 4)).toBe('    - item');
+  });
+
+  it('adds tab when useTabs is true', () => {
+    expect(indentLine('1. item', 4, true)).toBe('\t1. item');
+  });
+
+  it('adds tab to already tab-indented line', () => {
+    expect(indentLine('\t1. item', 4, true)).toBe('\t\t1. item');
   });
 });
 
@@ -572,6 +601,14 @@ describe('outdentLine', () => {
 
   it('returns unindented line unchanged', () => {
     expect(outdentLine('- item', 2)).toBe('- item');
+  });
+
+  it('removes one tab from tab-indented line', () => {
+    expect(outdentLine('\t1. item', 4)).toBe('1. item');
+  });
+
+  it('removes one tab from double-tab-indented line', () => {
+    expect(outdentLine('\t\t1. item', 4)).toBe('\t1. item');
   });
 });
 
@@ -754,3 +791,263 @@ describe('buildNextLinePrefix', () => {
   });
 });
 
+// ─── findListBounds ─────────────────────────────────────────────────
+
+describe('findListBounds', () => {
+  it('finds bounds of a simple list', () => {
+    const lines = ['1. A', '2. B', '3. C'];
+    expect(findListBounds(lines, 1)).toEqual([0, 2]);
+  });
+
+  it('stops at blank lines', () => {
+    const lines = ['text', '', '1. A', '2. B', '', 'more'];
+    expect(findListBounds(lines, 2)).toEqual([2, 3]);
+  });
+
+  it('includes nested items and continuation text', () => {
+    const lines = [
+      '1. A',
+      '    1. Sub',
+      '    continued',
+      '2. B',
+    ];
+    expect(findListBounds(lines, 0)).toEqual([0, 3]);
+  });
+
+  it('single line list', () => {
+    const lines = ['text', '1. Only', 'text'];
+    expect(findListBounds(lines, 1)).toEqual([1, 1]);
+  });
+});
+
+// ─── renumberList ───────────────────────────────────────────────────
+
+describe('renumberList', () => {
+  it('fixes sequential numbering (increment mode)', () => {
+    const lines = ['1. A', '1. B', '5. C'];
+    const changes = renumberList(lines, 0, 2, 4, 'increment');
+    expect(changes.get(1)).toBe('2. B');
+    expect(changes.get(2)).toBe('3. C');
+    expect(changes.has(0)).toBe(false); // 1 already correct
+  });
+
+  it('keeps same-number pattern in auto mode (1. 1. 1.)', () => {
+    const lines = ['1. A', '1. B', '1. C'];
+    const changes = renumberList(lines, 0, 2, 4, 'auto');
+    expect(changes.size).toBe(0); // all already 1, pattern = keep same
+  });
+
+  it('fixes gaps in auto mode when pattern is sequential', () => {
+    const lines = ['1. A', '2. B', '5. C', '7. D'];
+    const changes = renumberList(lines, 0, 3, 4, 'auto');
+    expect(changes.get(2)).toBe('3. C');
+    expect(changes.get(3)).toBe('4. D');
+  });
+
+  it('renumbers nested list with independent sub-groups', () => {
+    const lines = [
+      '1. A',
+      '    1. Sub1',
+      '    3. Sub2',
+      '2. B',
+      '    1. Sub3',
+      '    1. Sub4',
+    ];
+    const changes = renumberList(lines, 0, 5, 4, 'increment');
+    // Top level: 1, 2 → correct
+    // First sub-group (under A): 1, 3 → should be 1, 2
+    expect(changes.get(2)).toBe('    2. Sub2');
+    // Second sub-group (under B): 1, 1 → should be 1, 2
+    expect(changes.get(5)).toBe('    2. Sub4');
+  });
+
+  it('resets sub-list counters at new parent', () => {
+    const lines = [
+      '1. A',
+      '    1. X',
+      '    2. Y',
+      '2. B',
+      '    5. Z',
+    ];
+    const changes = renumberList(lines, 0, 4, 4, 'increment');
+    // Sub under B: 5 → should be 1 (new parent, counter reset)
+    expect(changes.get(4)).toBe('    1. Z');
+  });
+
+  it('preserves same-number sub-list in auto mode', () => {
+    const lines = [
+      '1. A',
+      '    1. X',
+      '    1. Y',
+      '    1. Z',
+    ];
+    const changes = renumberList(lines, 0, 3, 4, 'auto');
+    // Sub-list first=1, second=1 → keep same pattern
+    expect(changes.size).toBe(0);
+  });
+
+  it('handles tab-indented document', () => {
+    const lines = [
+      '1. A',
+      '\t1. Sub1',
+      '\t5. Sub2',
+      '2. B',
+    ];
+    const changes = renumberList(lines, 0, 3, 4, 'increment');
+    expect(changes.get(2)).toBe('\t2. Sub2');
+  });
+
+  it('handles deeply nested list (3 levels)', () => {
+    const lines = [
+      '1. A',
+      '    1. B',
+      '        1. C',
+      '        3. D',
+      '    2. E',
+      '        1. F',
+      '2. G',
+    ];
+    const changes = renumberList(lines, 0, 6, 4, 'increment');
+    // Level 0: 1, 2 → ok
+    // Level 4 under A: 1, 2 → ok
+    // Level 8 under B: 1, 3 → fix to 1, 2
+    expect(changes.get(3)).toBe('        2. D');
+    // Level 8 under E: 1 → ok (single, counter reset)
+    expect(changes.has(5)).toBe(false);
+  });
+
+  it('skips bullet items', () => {
+    const lines = [
+      '1. A',
+      '- bullet',
+      '3. B',
+    ];
+    const changes = renumberList(lines, 0, 2, 4, 'increment');
+    expect(changes.get(2)).toBe('2. B');
+  });
+
+  it('real-world user scenario: full document renumber', () => {
+    const lines = [
+      '1. Visual workflow language',
+      '    1. understand the needs',
+      '    2. design and establish',
+      '    3. evaluate',
+      '        1. CoPI4P facilitators',
+      '        2. CoPI4P practitioners',
+      '        3. DH researchers',
+      '    4. Technical prerequisites',
+      '        1. Stabilize TopiChat',
+      '        2. Finalize CoLaboFlow',
+      '        2. Finalize DataTalks',
+      '2. Democratize the systems',
+      '    1. understand the needs',
+      '        1. hard + expensive',
+      '        2. simpler + cheap interviews',
+      '        3. simpler + cheap collect',
+      '    2. evaluate the usability',
+      '        1. CoPI4P facilitators',
+      '        1. CoPI4P practitioners',
+      '        3. DH researchers',
+      '3. Transparency',
+      '4. AI as facilitator',
+    ];
+    const changes = renumberList(lines, 0, 21, 4, 'increment');
+    // Fix: line 10 "2. Finalize DataTalks" → "3. Finalize DataTalks"
+    expect(changes.get(10)).toBe('        3. Finalize DataTalks');
+    // Fix: line 18 "1. CoPI4P practitioners" → "2."
+    expect(changes.get(18)).toBe('        2. CoPI4P practitioners');
+    // Fix: line 19 "3. DH researchers" → "3." (already correct)
+    expect(changes.has(19)).toBe(false);
+    // Top level unchanged
+    expect(changes.has(0)).toBe(false);
+    expect(changes.has(11)).toBe(false);
+    expect(changes.has(20)).toBe(false);
+    expect(changes.has(21)).toBe(false);
+  });
+
+  it('returns empty map when no numbered items', () => {
+    const lines = ['- A', '- B', 'text'];
+    const changes = renumberList(lines, 0, 2, 4, 'increment');
+    expect(changes.size).toBe(0);
+  });
+
+  it('renumbers sub-items correctly after mid-list outdent (auto mode)', () => {
+    // After outdenting item 3 from sub-list, remaining sub-items form new group
+    const lines = [
+      '\t3. **Technical prerequisites**',
+      '\t\t1. Support ColaboFlow',
+      '\t\t2. Finalize ColaboFlow',
+      '\t4. Make ColaboFlow lighter',           // was outdented from sub-list
+      '\t\t4. Integrate LLM AI tasks',          // should become 1
+      '\t\t5. Integrate generative AI',          // should become 2
+      '\t\t6. Provide sandbox execution',        // should become 3
+    ];
+    const changes = renumberList(lines, 0, 6, 4, 'auto');
+    expect(changes.get(4)).toBe('\t\t1. Integrate LLM AI tasks');
+    expect(changes.get(5)).toBe('\t\t2. Integrate generative AI');
+    expect(changes.get(6)).toBe('\t\t3. Provide sandbox execution');
+    // Parent level items stay unchanged
+    expect(changes.has(0)).toBe(false);
+    expect(changes.has(3)).toBe(false);
+  });
+
+  it('renumbers sub-items correctly after mid-list outdent (increment mode)', () => {
+    const lines = [
+      '\t3. **Technical prerequisites**',
+      '\t\t1. Support ColaboFlow',
+      '\t\t2. Finalize ColaboFlow',
+      '\t4. Make ColaboFlow lighter',
+      '\t\t4. Integrate LLM AI tasks',
+      '\t\t5. Integrate generative AI',
+      '\t\t6. Provide sandbox execution',
+    ];
+    const changes = renumberList(lines, 0, 6, 4, 'increment');
+    expect(changes.get(0)).toBe('\t1. **Technical prerequisites**');
+    expect(changes.get(3)).toBe('\t2. Make ColaboFlow lighter');
+    expect(changes.get(4)).toBe('\t\t1. Integrate LLM AI tasks');
+    expect(changes.get(5)).toBe('\t\t2. Integrate generative AI');
+    expect(changes.get(6)).toBe('\t\t3. Provide sandbox execution');
+  });
+
+  it('preserves 1. 1. 1. pattern in sub-group after parent reset', () => {
+    const lines = [
+      '1. A',
+      '    1. X',
+      '    1. Y',
+      '2. B',
+      '    1. Z',
+      '    1. W',
+    ];
+    const changes = renumberList(lines, 0, 5, 4, 'auto');
+    // Both sub-groups have 1,1 pattern → keep same
+    expect(changes.size).toBe(0);
+  });
+
+  it('new sub-item after Enter+Tab starts at 1, not parent number', () => {
+    // User pressed Enter on item 4, then Tab — new line got number 5
+    const lines = [
+      '1. How visual workflow language...',
+      '2. How workflows can democratize...',
+      '3. How workflows can be used...',
+      '4. **What role AI can play** in',
+      '    5. the process of co-creating...',
+    ];
+    const changes = renumberList(lines, 0, 4, 4, 'auto');
+    // Sub-item under 4 should start at 1, not keep 5
+    expect(changes.get(4)).toBe('    1. the process of co-creating...');
+    // Top-level items unchanged
+    expect(changes.has(0)).toBe(false);
+    expect(changes.has(1)).toBe(false);
+    expect(changes.has(2)).toBe(false);
+    expect(changes.has(3)).toBe(false);
+  });
+
+  it('single sub-item under parent starts at 1 (increment mode)', () => {
+    const lines = [
+      '1. Parent',
+      '    7. Only child',
+    ];
+    const changes = renumberList(lines, 0, 1, 4, 'increment');
+    expect(changes.get(1)).toBe('    1. Only child');
+  });
+});

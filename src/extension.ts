@@ -10,7 +10,7 @@ import {
   toggleCodeSpan, toggleCodeBlock,
   getHeadingLevel, setHeadingLevel,
   toggleTaskCheck,
-  indentLine, outdentLine
+  findListBounds, renumberList
 } from './core/markdown';
 import { showPreview } from './preview/markdown-preview';
 import {
@@ -28,7 +28,6 @@ const notify = new VscNotificationService();
 // Re-entrancy guards to prevent recursive command execution
 let enterBusy = false;
 let pasteBusy = false;
-let tabBusy = false;
 
 /**
  * Get text and selection for paste operations.
@@ -136,7 +135,7 @@ async function pasteLink(invertRelative: boolean = false): Promise<void> {
 }
 
 async function smartPaste(): Promise<void> {
-  if (pasteBusy) { return; }
+  if (pasteBusy) { await vscode.commands.executeCommand('editor.action.clipboardPasteAction'); return; }
   pasteBusy = true;
   try {
     if (!isEnabled() || !getConfig<boolean>('override.paste', true)) {
@@ -327,7 +326,7 @@ function toRelativePath(targetPath: string, currentFilePath: string | null): str
 }
 
 async function onEnter(): Promise<void> {
-  if (enterBusy) { return; }
+  if (enterBusy) { await defaultNewline(vscode.window.activeTextEditor); return; }
   enterBusy = true;
   try {
     const vscEditor = vscode.window.activeTextEditor;
@@ -362,13 +361,16 @@ async function onEnter(): Promise<void> {
       return;
     }
 
-    // Determine previous number for auto mode
+    // Determine previous number for auto mode (same indent level only)
     let previousNumber: number | null = null;
-    if (current.type === 'number' && pos.line > 0) {
-      const prevLine = doc.lineAt(pos.line - 1).text;
-      const prev = parseListPrefix(prevLine);
-      if (prev.type === 'number' && prev.number !== undefined) {
-        previousNumber = prev.number;
+    if (current.type === 'number') {
+      for (let j = pos.line - 1; j >= 0; j--) {
+        const prev = parseListPrefix(doc.lineAt(j).text);
+        if (prev.indent.length < current.indent.length) { break; }
+        if (prev.indent.length === current.indent.length && prev.type === 'number') {
+          previousNumber = prev.number!;
+          break;
+        }
       }
     }
 
@@ -384,6 +386,14 @@ async function onEnter(): Promise<void> {
 
     const newPos = new vscode.Position(pos.line + 1, prefix.length);
     vscEditor.selection = new vscode.Selection(newPos, newPos);
+
+    // Renumber entire list block after inserting new item
+    if (current.type === 'number') {
+      await renumberSurroundingList(vscEditor);
+      skipNextDebounce = true;
+      // Restore cursor (renumber edit may have shifted it)
+      vscEditor.selection = new vscode.Selection(newPos, newPos);
+    }
   } finally {
     enterBusy = false;
   }
@@ -704,88 +714,78 @@ async function toggleTaskCmd(): Promise<void> {
 
 // --- List indent/outdent ---
 
-async function indentListCmd(): Promise<void> {
-  if (tabBusy) { return; }
-  tabBusy = true;
-  try {
-    const vscEditor = vscode.window.activeTextEditor;
-    if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.tab', true)) {
-      await vscode.commands.executeCommand('editor.action.indentLines');
-      return;
-    }
+let renumberBusy = false;
+let renumberTimer: ReturnType<typeof setTimeout> | undefined;
+let skipNextDebounce = false; // Prevents double-renumber when commands already handled it
+let lastRenumberTime = 0;    // Cooldown to prevent ping-pong with other extensions
 
-    const doc = vscEditor.document;
-    const sel = vscEditor.selection;
-    const startLine = sel.start.line;
-    const endLine = sel.end.line;
+function getDocLines(doc: vscode.TextDocument): string[] {
+  const lines: string[] = [];
+  for (let i = 0; i < doc.lineCount; i++) { lines.push(doc.lineAt(i).text); }
+  return lines;
+}
 
-    let hasListItem = false;
-    for (let i = startLine; i <= endLine; i++) {
-      if (parseListPrefix(doc.lineAt(i).text).type !== 'none') {
-        hasListItem = true;
-        break;
-      }
-    }
+/**
+ * Renumber the entire list block around the cursor.
+ * Called as post-processing after VS Code's indent/outdent/enter.
+ */
+async function renumberSurroundingList(vscEditor: vscode.TextEditor): Promise<void> {
+  const doc = vscEditor.document;
+  const tabSize = vscEditor.options.tabSize as number || 4;
+  const mode = getConfig<NumberedListMode>('autoList.numbered.mode', 'auto');
+  const cursorLine = vscEditor.selection.active.line;
 
-    if (!hasListItem) {
-      await vscode.commands.executeCommand('editor.action.indentLines');
-      return;
-    }
+  const allLines = getDocLines(doc);
+  const [start, end] = findListBounds(allLines, cursorLine);
+  const changes = renumberList(allLines, start, end, tabSize, mode);
 
-    const tabSize = vscEditor.options.tabSize as number || 2;
-    await vscEditor.edit(eb => {
-      for (let i = startLine; i <= endLine; i++) {
-        let indented = indentLine(doc.lineAt(i).text, tabSize);
-        // Reset numbered list to 1 when indenting (new sub-list level)
-        const parsed = parseListPrefix(indented);
-        if (parsed.type === 'number' && parsed.number !== undefined && parsed.number !== 1) {
-          indented = indented.replace(/^(\s*)\d+\./, '$11.');
+  if (changes.size > 0) {
+    renumberBusy = true;
+    try {
+      await vscEditor.edit(eb => {
+        for (const [lineIdx, newText] of changes) {
+          eb.replace(doc.lineAt(lineIdx).range, newText);
         }
-        eb.replace(doc.lineAt(i).range, indented);
-      }
-    });
-  } finally {
-    tabBusy = false;
+      });
+      lastRenumberTime = Date.now();
+    } finally {
+      renumberBusy = false;
+    }
   }
 }
 
-async function outdentListCmd(): Promise<void> {
-  if (tabBusy) { return; }
-  tabBusy = true;
-  try {
-    const vscEditor = vscode.window.activeTextEditor;
-    if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.tab', true)) {
-      await vscode.commands.executeCommand('editor.action.outdentLines');
-      return;
-    }
+async function indentListCmd(): Promise<void> {
+  const vscEditor = vscode.window.activeTextEditor;
 
-    const doc = vscEditor.document;
-    const sel = vscEditor.selection;
-    const startLine = sel.start.line;
-    const endLine = sel.end.line;
-
-    let hasListItem = false;
-    for (let i = startLine; i <= endLine; i++) {
-      if (parseListPrefix(doc.lineAt(i).text).type !== 'none') {
-        hasListItem = true;
-        break;
-      }
-    }
-
-    if (!hasListItem) {
-      await vscode.commands.executeCommand('editor.action.outdentLines');
-      return;
-    }
-
-    const tabSize = vscEditor.options.tabSize as number || 2;
-    await vscEditor.edit(eb => {
-      for (let i = startLine; i <= endLine; i++) {
-        eb.replace(doc.lineAt(i).range, outdentLine(doc.lineAt(i).text, tabSize));
-      }
-    });
-  } finally {
-    tabBusy = false;
+  // ALWAYS let VS Code handle the indent first — never block Tab
+  if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.tab', true)) {
+    await vscode.commands.executeCommand('editor.action.indentLines');
+    return;
   }
+
+  // VS Code does the actual indent
+  await vscode.commands.executeCommand('editor.action.indentLines');
+
+  // Post-process: renumber entire list block
+  await renumberSurroundingList(vscEditor);
+  skipNextDebounce = true;
+}
+
+async function outdentListCmd(): Promise<void> {
+  const vscEditor = vscode.window.activeTextEditor;
+
+  // ALWAYS let VS Code handle the outdent first — never block Shift+Tab
+  if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.tab', true)) {
+    await vscode.commands.executeCommand('editor.action.outdentLines');
+    return;
+  }
+
+  // VS Code does the actual outdent
+  await vscode.commands.executeCommand('editor.action.outdentLines');
+
+  // Post-process: renumber entire list block
+  await renumberSurroundingList(vscEditor);
+  skipNextDebounce = true;
 }
 
 // --- Export to HTML ---
@@ -919,13 +919,21 @@ async function deleteImageCmd(): Promise<void> {
   notify.showInfo(fileExists ? `Deleted ${fileName}` : `Removed image reference`);
 }
 
-function safe(fn: (...args: any[]) => Promise<void>): (...args: any[]) => Promise<void> {
+/**
+ * Wrap a command handler with error handling.
+ * @param fallbackCmd — VS Code default command to execute if handler throws,
+ *   so the standard key behavior is never blocked.
+ */
+function safe(fn: (...args: any[]) => Promise<void>, fallbackCmd?: string): (...args: any[]) => Promise<void> {
   return async (...args: any[]) => {
     try {
       await fn(...args);
     } catch (err) {
       console.error('[Marker]', err);
       notify.showError(`Marker error: ${err instanceof Error ? err.message : String(err)}`);
+      if (fallbackCmd) {
+        try { await vscode.commands.executeCommand(fallbackCmd); } catch { /* best-effort */ }
+      }
     }
   };
 }
@@ -934,12 +942,15 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('marker.pasteLink', safe(() => pasteLink(true))),
     vscode.commands.registerCommand('marker.pasteImage', safe(pasteImage)),
-    vscode.commands.registerCommand('marker.smartPaste', safe(smartPaste)),
-    vscode.commands.registerCommand('marker.onEnter', safe(onEnter)),
-    vscode.commands.registerCommand('marker.showPreview', () => {
-      if (!isEnabled() || !getConfig<boolean>('preview.enabled', true)) { return; }
+    vscode.commands.registerCommand('marker.smartPaste', safe(smartPaste, 'editor.action.clipboardPasteAction')),
+    vscode.commands.registerCommand('marker.onEnter', safe(onEnter, 'type', /* Enter fallback */)),
+    vscode.commands.registerCommand('marker.showPreview', safe(async () => {
+      if (!isEnabled() || !getConfig<boolean>('preview.enabled', true)) {
+        await vscode.commands.executeCommand('markdown.showPreview');
+        return;
+      }
       showPreview(context);
-    }),
+    }, 'markdown.showPreview')),
     vscode.commands.registerCommand('marker.toggleBold', safe(() => toggleFormat('**', false, 'formatting.bold'))),
     vscode.commands.registerCommand('marker.toggleItalic', safe(() => toggleFormat('*', false, 'formatting.italic'))),
     vscode.commands.registerCommand('marker.toggleUnderline', safe(() => toggleFormat('u', true, 'formatting.underline'))),
@@ -949,16 +960,74 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('marker.headingUp', safe(() => changeHeadingLevel('up'))),
     vscode.commands.registerCommand('marker.headingDown', safe(() => changeHeadingLevel('down'))),
     vscode.commands.registerCommand('marker.toggleTask', safe(toggleTaskCmd)),
-    vscode.commands.registerCommand('marker.indentList', safe(indentListCmd)),
-    vscode.commands.registerCommand('marker.outdentList', safe(outdentListCmd)),
+    vscode.commands.registerCommand('marker.indentList', safe(indentListCmd, 'editor.action.indentLines')),
+    vscode.commands.registerCommand('marker.outdentList', safe(outdentListCmd, 'editor.action.outdentLines')),
     vscode.commands.registerCommand('marker.createTable', safe(createTable)),
     vscode.commands.registerCommand('marker.exportHtml', safe(exportToHtml)),
     vscode.commands.registerCommand('marker.deleteImage', safe(deleteImageCmd))
   );
 
   // Set context key AFTER commands are registered so keybindings
-  // cannot fire before the commands exist
-  vscode.commands.executeCommand('setContext', 'marker.active', true);
+  // cannot fire before the commands exist.
+  // Sync with marker.enabled so that when disabled, all keybindings
+  // fall through to VS Code defaults natively.
+  const syncActiveContext = () => {
+    const enabled = vscode.workspace.getConfiguration('marker').get<boolean>('enabled', true);
+    vscode.commands.executeCommand('setContext', 'marker.active', enabled);
+  };
+  syncActiveContext();
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('marker.enabled')) {
+        syncActiveContext();
+      }
+    }),
+
+    // Auto-renumber lists on ANY document change (delete, cut, paste,
+    // manual indent edit, etc.). Debounced — heavy check runs only after
+    // 400ms of inactivity, not on every keystroke.
+    vscode.workspace.onDidChangeTextDocument(e => {
+      if (renumberBusy) { return; }
+      if (e.document.languageId !== 'markdown') { return; }
+      if (e.contentChanges.length === 0) { return; }
+      // Never interfere with Undo/Redo — VS Code system operations are sacred
+      if (e.reason === vscode.TextDocumentChangeReason.Undo ||
+          e.reason === vscode.TextDocumentChangeReason.Redo) { return; }
+
+      if (renumberTimer) { clearTimeout(renumberTimer); }
+      renumberTimer = setTimeout(async () => {
+        if (skipNextDebounce) { skipNextDebounce = false; return; }
+        if (renumberBusy) { return; }
+        const cooldown = getConfig<number>('autoList.numbered.renumberCooldownMs', 1000);
+        if (cooldown > 0 && Date.now() - lastRenumberTime < cooldown) { return; }
+        if (!isEnabled()) { return; }
+
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document !== e.document) { return; }
+
+        // Check if cursor is inside a list block with numbered items
+        const cursorLine = editor.selection.active.line;
+        if (cursorLine >= editor.document.lineCount) { return; }
+        const allLines = getDocLines(editor.document);
+        const [start, end] = findListBounds(allLines, cursorLine);
+        let hasNumbered = false;
+        for (let i = start; i <= end; i++) {
+          if (parseListPrefix(allLines[i]).type === 'number') {
+            hasNumbered = true;
+            break;
+          }
+        }
+        if (!hasNumbered) { return; }
+
+        renumberBusy = true;
+        try {
+          await renumberSurroundingList(editor);
+        } catch { /* best-effort */ }
+        finally { renumberBusy = false; }
+      }, 400);
+    })
+  );
 }
 
 export function deactivate(): void {
