@@ -11,17 +11,17 @@
   //          → if YES: Marker is NOT the problem
   //          → if NO: continue to Step 2
   //
-  //  STEP 2: Set "marker.enabled" to true, but disable ALL key overrides:
-  //          → "marker.override.enter": false
-  //          → "marker.override.tab": false
-  //          → "marker.override.paste": false
+  //  STEP 2: Set "marker.enabled" to true, but switch ALL keys to safe mode:
+  //          → "marker.bindings.keys.enter.mode": "provider"    (default, crash-safe)
+  //          → "marker.bindings.keys.tab.mode": "auto-listener" (crash-safe)
+  //          → "marker.bindings.keys.paste.mode": "provider"    (default, crash-safe)
   //          → verify: still crashes?
-  //          → if NO: one of the key overrides is the culprit → go to Step 3
+  //          → if NO: one of the key overrides was the culprit → go to Step 3
   //
-  //  STEP 3: Enable ONE key override at a time:
-  //          → first "marker.override.paste": true  → test
-  //          → then  "marker.override.enter": true  → test
-  //          → then  "marker.override.tab": true    → test
+  //  STEP 3: Switch ONE key to "keybinding-override" at a time:
+  //          → first "marker.bindings.keys.paste.mode": "keybinding-override" → test
+  //          → then  "marker.bindings.keys.enter.mode": "keybinding-override" → test
+  //          → then  "marker.bindings.keys.tab.mode": "tab-override"          → test
   //          → the one that causes crash is the culprit
   //
   //  STEP 4: If key overrides are not the problem, enable features one by one:
@@ -81,9 +81,14 @@
   // When disabled, the key falls through to normal VS Code behavior.
 
   // Enter key: smart list continuation (- item → Enter → - new item)
-  // Risk: generates editor.edit() calls that trigger onDidChangeTextDocument
-  //       for ALL extensions listening (Copilot tries to process the change)
-  "marker.override.enter": true,
+  // Three modes:
+  //   "provider"            — onEnterRules (declarative) + listener cleanup/outdent.
+  //                           Crash-safe: Enter always works even if host dies.
+  //   "keybinding-override" — Enter keybinding → marker.onEnter command.
+  //                           Full features but Enter is blocked if host crashes.
+  //   "manual"              — No Enter override, no listener cleanup.
+  //                           Use marker.onEnter from Command Palette.
+  "marker.bindings.keys.enter.mode": "provider",
 
   // Tab key: how list indentation works.
   // Three modes:
@@ -96,16 +101,21 @@
   //   "manual"         — No Tab override, no auto-renumber on Tab. Use
   //                      marker.indentList / marker.outdentList from Command
   //                      Palette or bind your own shortcut in keybindings.json.
-  "marker.listIndent.mode": "auto-listener",
+  "marker.bindings.keys.tab.mode": "tab-override",
 
   // Cmd+V / Ctrl+V: smart paste (auto-detect URL or image in clipboard)
-  // v0.0.17+: uses DocumentPasteEditProvider (no keybinding override).
-  // Requires editor.pasteAs.enabled: true (see VS CODE PASTE SYSTEM above).
-  // If extension host crashes, default paste works — never blocked.
-  "marker.override.paste": true,
+  // Three modes:
+  //   "provider"            — DocumentPasteEditProvider. Hooks into paste
+  //                           pipeline without overriding Cmd+V. Crash-safe.
+  //                           Requires editor.pasteAs.enabled: true (see above).
+  //   "keybinding-override" — Cmd+V keybinding → marker.smartPaste command.
+  //                           Full features but Cmd+V is blocked if host crashes.
+  //   "manual"              — No paste override. Use Ctrl+Alt+V (pasteLink)
+  //                           or Cmd+Alt+I (pasteImage) manually.
+  "marker.bindings.keys.paste.mode": "provider",
 
   // ─── PASTE SUB-FEATURES ────────────────────────────────────
-  // These only matter when marker.override.paste is true.
+  // These only matter when marker.bindings.keys.paste.mode is not "manual".
 
   // Auto-detect URL in clipboard and wrap selected text as [text](url)
   "marker.pasteLink.enabled": true,
@@ -120,7 +130,7 @@
   "marker.pasteImage.autoName": "image-DDD",
 
   // ─── ENTER SUB-FEATURES ────────────────────────────────────
-  // These only matter when marker.override.enter is true.
+  // These only matter when marker.bindings.keys.enter.mode is not "manual".
 
   // Auto-continue bullet lists (- item, + item)
   "marker.autoList.bullet.enabled": true,

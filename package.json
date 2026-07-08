@@ -3,7 +3,7 @@
   "displayName": "Marker",
   "publisher": "mprinc",
   "description": "Markdown extension for pasting links and images over selected text",
-  "version": "0.0.20",
+  "version": "0.0.29",
   "repository": {
     "type": "git",
     "url": "https://github.com/mprinc/VSC-Marker"
@@ -183,18 +183,29 @@
       {
         "command": "marker.indentList",
         "key": "tab",
-        "when": "config.marker.listIndent.mode == 'tab-override' && config.marker.enabled && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
+        "when": "config.marker.bindings.keys.tab.mode == 'tab-override' && config.marker.enabled && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
       },
       {
         "command": "marker.outdentList",
         "key": "shift+tab",
-        "when": "config.marker.listIndent.mode == 'tab-override' && config.marker.enabled && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
+        "when": "config.marker.bindings.keys.tab.mode == 'tab-override' && config.marker.enabled && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode && !inlineSuggestionVisible && !editorTabMovesFocus"
       },
       {
         "command": "marker.deleteImage",
         "key": "ctrl+shift+delete",
         "mac": "cmd+shift+backspace",
         "when": "config.marker.enabled && editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "marker.onEnter",
+        "key": "enter",
+        "when": "config.marker.bindings.keys.enter.mode == 'keybinding-override' && config.marker.enabled && editorTextFocus && editorLangId == markdown && !suggestWidgetVisible && !editorHasMultipleSelections && !inSnippetMode"
+      },
+      {
+        "command": "marker.smartPaste",
+        "key": "ctrl+v",
+        "mac": "cmd+v",
+        "when": "config.marker.bindings.keys.paste.mode == 'keybinding-override' && config.marker.enabled && editorTextFocus && editorLangId == markdown"
       }
     ],
     "configuration": {
@@ -205,12 +216,22 @@
           "default": true,
           "description": "Master switch: disable ALL Marker functionality (keys fall through to VS Code defaults)"
         },
-        "marker.override.enter": {
-          "type": "boolean",
-          "default": true,
-          "description": "Override Enter key for smart list continuation. When false, Enter behaves normally."
+        "marker.bindings.keys.enter.mode": {
+          "type": "string",
+          "enum": [
+            "provider",
+            "keybinding-override",
+            "manual"
+          ],
+          "enumDescriptions": [
+            "Declarative onEnterRules + listener cleanup/outdent. Crash-safe: Enter always works even if host dies",
+            "Enter keybinding override → marker.onEnter command. Full features but Enter is blocked if extension crashes",
+            "No Enter override, no listener cleanup — use marker.onEnter from Command Palette"
+          ],
+          "default": "provider",
+          "description": "How Enter interacts with list continuation"
         },
-        "marker.listIndent.mode": {
+        "marker.bindings.keys.tab.mode": {
           "type": "string",
           "enum": [
             "tab-override",
@@ -225,10 +246,20 @@
           "default": "tab-override",
           "description": "How Tab/Shift+Tab interacts with list indentation"
         },
-        "marker.override.paste": {
-          "type": "boolean",
-          "default": true,
-          "description": "Override Cmd+V/Ctrl+V for smart paste. When false, paste behaves normally."
+        "marker.bindings.keys.paste.mode": {
+          "type": "string",
+          "enum": [
+            "provider",
+            "keybinding-override",
+            "manual"
+          ],
+          "enumDescriptions": [
+            "DocumentPasteEditProvider — hooks into paste pipeline without overriding Cmd+V. Crash-safe: paste always works even if host dies",
+            "Cmd+V keybinding override → marker.smartPaste command. Full features but Cmd+V is blocked if extension crashes",
+            "No paste override — use Ctrl+Alt+V (pasteLink) or Cmd+Alt+I (pasteImage) manually"
+          ],
+          "default": "provider",
+          "description": "How Cmd+V/Ctrl+V interacts with smart paste"
         },
         "marker.pasteLink.enabled": {
           "type": "boolean",

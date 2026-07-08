@@ -45,8 +45,8 @@ All shortcuts are active only in Markdown files.
 | Heading Up | `Cmd+Shift+]` | `Ctrl+Shift+]` | Increase heading level (with cascading sub-headings) |
 | Heading Down | `Cmd+Shift+[` | `Ctrl+Shift+[` | Decrease heading level (with cascading sub-headings) |
 | Toggle Task | `Alt+C` | `Alt+C` | Toggle `[ ]` / `[x]` checkbox (converts plain bullets too) |
-| Indent List | `Tab` | `Tab` | Indent list item (requires `marker.listIndent.mode: "tab-override"`) |
-| Outdent List | `Shift+Tab` | `Shift+Tab` | Outdent list item (requires `marker.listIndent.mode: "tab-override"`) |
+| Indent List | `Tab` | `Tab` | Indent list item (requires `marker.bindings.keys.tab.mode: "tab-override"`) |
+| Outdent List | `Shift+Tab` | `Shift+Tab` | Outdent list item (requires `marker.bindings.keys.tab.mode: "tab-override"`) |
 | Create Table | `Cmd+Alt+T` | `Ctrl+Alt+T` | Create empty table or convert selected text to table |
 | Preview | `Cmd+Shift+V` | `Ctrl+Shift+V` | Live markdown preview in side panel |
 | Export HTML | — | — | Export current file to HTML (via Command Palette) |
