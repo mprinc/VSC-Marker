@@ -549,6 +549,109 @@ export function parseListPrefix(line: string): ListPrefix {
   return { type: 'none', marker: '', indent: '', isEmpty: true };
 }
 
+/**
+ * Determines what to do when Enter is pressed and the previous line
+ * is a list prefix. Returns:
+ *   'outdent' — reduce indent by one level (indented empty item)
+ *   'delete'  — remove prefix entirely (root-level empty item)
+ *   'none'    — do nothing (line has content, or cursor line has content from split)
+ */
+export function emptyListItemAction(
+  prevLineText: string,
+  curLineText: string
+): 'outdent' | 'delete' | 'none' {
+  const parsed = parseListPrefix(prevLineText);
+  if (parsed.type === 'none' || !parsed.isEmpty) { return 'none'; }
+  // If cursor line has content, user split a line — don't touch it
+  if (curLineText.trim() !== '') { return 'none'; }
+  if (parsed.indent.length > 0) { return 'outdent'; }
+  return 'delete';
+}
+
+/**
+ * Compute the prefix for an outdented list item by looking at siblings
+ * at the target indent level. Adapts marker type:
+ *   - if parent level is numbered → returns next number (e.g. "6. ")
+ *   - if parent level is bullet → returns same bullet marker
+ *   - fallback → keeps current marker at new indent
+ */
+export function computeOutdentPrefix(
+  lines: string[],
+  lineIndex: number,
+  currentParsed: ListPrefix,
+  tabSize: number
+): string {
+  const indent = currentParsed.indent;
+  const newIndent = indent.startsWith('\t')
+    ? indent.substring(1)
+    : indent.substring(Math.min(tabSize, indent.length));
+
+  const targetWidth = visualIndent(newIndent, tabSize);
+
+  // Look upward for list items at the target indent level
+  for (let i = lineIndex - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line.trim() === '') { continue; }
+    const parsed = parseListPrefix(line);
+    if (parsed.type === 'none') { break; }
+
+    const w = visualIndent(parsed.indent, tabSize);
+    if (w === targetWidth) {
+      if (parsed.type === 'number') {
+        return newIndent + (parsed.number! + 1) + '. ';
+      }
+      return newIndent + parsed.marker + ' ';
+    }
+    if (w < targetWidth) { break; }
+  }
+
+  // Fallback: keep current marker type at new indent
+  return newIndent + currentParsed.marker + ' ';
+}
+
+/**
+ * After indent/outdent, adapt a line's marker to match siblings at the
+ * same indent level. Returns the new line text, or null if no change needed.
+ *
+ * Example: outdenting "    3. text" into a bullet-list level → "    - text"
+ */
+export function adaptMarkerForLevel(
+  lines: string[],
+  lineIndex: number,
+  tabSize: number
+): string | null {
+  const parsed = parseListPrefix(lines[lineIndex]);
+  if (parsed.type === 'none') { return null; }
+
+  const myWidth = visualIndent(parsed.indent, tabSize);
+
+  // Look upward for a sibling at the same indent level
+  for (let i = lineIndex - 1; i >= 0; i--) {
+    if (lines[i].trim() === '') { continue; }
+    const sib = parseListPrefix(lines[i]);
+    if (sib.type === 'none') { break; }
+
+    const sibWidth = visualIndent(sib.indent, tabSize);
+    if (sibWidth === myWidth) {
+      if (sib.type === parsed.type) { return null; } // same type, no change
+      // Different type — adapt marker, keep content
+      // Content starts after: indent + marker + separator
+      // Bullet: indent + marker + " " + content  (marker = "-" or "+")
+      // Number: indent + marker + " " + content  (marker = "3.")
+      const content = parsed.isEmpty ? '' : lines[lineIndex].substring(
+        parsed.indent.length + parsed.marker.length + 1
+      );
+      if (sib.type === 'number') {
+        return parsed.indent + (sib.number! + 1) + '. ' + content;
+      }
+      return parsed.indent + sib.marker + ' ' + content;
+    }
+    if (sibWidth < myWidth) { break; }
+  }
+
+  return null; // no sibling found, keep as is
+}
+
 export type NumberedListMode = 'auto' | 'increment';
 
 export function getNextNumber(

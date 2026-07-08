@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import {
   wrapWithLink, wrapWithImage, isUrl, isFilePath, shouldPasteAsLink, shouldUseRelativePath, RelativePathMode, filePathToMarkdownUrl, buildImageFilename,
-  parseListPrefix, buildNextLinePrefix, NumberedListMode,
+  parseListPrefix, emptyListItemAction, computeOutdentPrefix, adaptMarkerForLevel, buildNextLinePrefix, NumberedListMode,
   toggleWrap, toggleHtmlWrap, findWrapperAround, findHtmlWrapperAround,
   findLinkAround,
   analyzeText, generateMarkdownTable, getDelimiterLabel,
@@ -135,7 +135,7 @@ async function smartPaste(): Promise<void> {
   if (pasteBusy) { await vscode.commands.executeCommand('editor.action.clipboardPasteAction'); return; }
   pasteBusy = true;
   try {
-    if (!isEnabled() || !getConfig<boolean>('override.paste', true)) {
+    if (!isEnabled()) {
       await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
       return;
     }
@@ -317,7 +317,7 @@ async function onEnter(): Promise<void> {
   enterBusy = true;
   try {
     const vscEditor = vscode.window.activeTextEditor;
-    if (!vscEditor || !isEnabled() || !getConfig<boolean>('override.enter', true)) {
+    if (!vscEditor || !isEnabled()) {
       await defaultNewline(vscEditor);
       return;
     }
@@ -339,12 +339,24 @@ async function onEnter(): Promise<void> {
       return;
     }
 
-    // If current item is empty (just marker, no text) → remove marker
+    // If current item is empty → progressive outdent or exit list
     if (current.isEmpty) {
       const lineRange = doc.lineAt(pos.line).range;
-      await vscEditor.edit(editBuilder => {
-        editBuilder.replace(lineRange, '');
-      });
+      if (current.indent.length > 0) {
+        // Indented: outdent one level, adapt marker to parent list type
+        const tabSize = (vscEditor.options.tabSize as number) || 4;
+        const allLines = getDocLines(doc);
+        const newPrefix = computeOutdentPrefix(allLines, pos.line, current, tabSize);
+        await vscEditor.edit(eb => eb.replace(lineRange, newPrefix));
+        const newPos = new vscode.Position(pos.line, newPrefix.length);
+        vscEditor.selection = new vscode.Selection(newPos, newPos);
+        skipNextDebounce = true;
+        await renumberSurroundingList(vscEditor);
+        vscEditor.selection = new vscode.Selection(newPos, newPos);
+      } else {
+        // Root level: delete prefix entirely (exit list)
+        await vscEditor.edit(eb => eb.replace(lineRange, ''));
+      }
       return;
     }
 
@@ -770,6 +782,16 @@ async function outdentListCmd(): Promise<void> {
   // VS Code does the actual outdent
   await vscode.commands.executeCommand('editor.action.outdentLines');
 
+  // Adapt marker type to match siblings at the new indent level
+  const doc = vscEditor.document;
+  const curLine = vscEditor.selection.active.line;
+  const tabSize = (vscEditor.options.tabSize as number) || 4;
+  const allLines = getDocLines(doc);
+  const adapted = adaptMarkerForLevel(allLines, curLine, tabSize);
+  if (adapted !== null) {
+    await vscEditor.edit(eb => eb.replace(doc.lineAt(curLine).range, adapted));
+  }
+
   // Post-process: renumber entire list block
   await renumberSurroundingList(vscEditor);
   skipNextDebounce = true;
@@ -968,7 +990,7 @@ export function activate(context: vscode.ExtensionContext): void {
         { language: 'markdown' },
         {
           async provideDocumentPasteEdits(document, ranges, dataTransfer, _context, token) {
-            if (!isEnabled() || !getConfig<boolean>('override.paste', true)) { return undefined; }
+            if (!isEnabled() || getConfig<string>('bindings.keys.paste.mode', 'provider') !== 'provider') { return undefined; }
 
             const textItem = dataTransfer.get('text/plain');
             const range = ranges[0];
@@ -1136,22 +1158,34 @@ export function activate(context: vscode.ExtensionContext): void {
           if (cursorLine >= editor.document.lineCount) { return; }
           const allLines = getDocLines(editor.document);
 
-          // Clean up empty list items: if the line above cursor is an
-          // empty list prefix (e.g. "6. " with no content), clear it
-          // AND remove the extra blank line that Enter created.
-          // Result: "6. " → empty line, no extra newline.
-          if (cursorLine > 0) {
+          // Empty list item handling (progressive outdent):
+          // Indented empty item → outdent one level (like Shift+Tab)
+          // Root-level empty item → delete prefix entirely (exit list)
+          // Only active in 'provider' mode (keybinding-override uses onEnter command)
+          const enterMode = getConfig<string>('bindings.keys.enter.mode', 'provider');
+          if (enterMode === 'provider' && cursorLine > 0) {
             const prevLine = cursorLine - 1;
-            const prevParsed = parseListPrefix(allLines[prevLine]);
-            if (prevParsed.type !== 'none' && prevParsed.isEmpty) {
-              // Delete from start of prefix line through end of current line (the extra newline)
+            const action = emptyListItemAction(allLines[prevLine], allLines[cursorLine]);
+            if (action !== 'none') {
+              const prevParsed = parseListPrefix(allLines[prevLine]);
               const deleteRange = new vscode.Range(prevLine, 0, cursorLine, allLines[cursorLine].length);
               renumberBusy = true;
               try {
-                await editor.edit(eb => eb.replace(deleteRange, ''));
-                // Cursor lands on the now-empty prevLine
-                const newPos = new vscode.Position(prevLine, 0);
-                editor.selection = new vscode.Selection(newPos, newPos);
+                if (action === 'outdent') {
+                  const tabSize = (editor.options.tabSize as number) || 4;
+                  const newPrefix = computeOutdentPrefix(allLines, prevLine, prevParsed, tabSize);
+                  await editor.edit(eb => eb.replace(deleteRange, newPrefix));
+                  const newPos = new vscode.Position(prevLine, newPrefix.length);
+                  editor.selection = new vscode.Selection(newPos, newPos);
+                  skipNextDebounce = true;
+                  await renumberSurroundingList(editor);
+                  editor.selection = new vscode.Selection(newPos, newPos);
+                } else {
+                  // 'delete' — root level: remove prefix entirely
+                  await editor.edit(eb => eb.replace(deleteRange, ''));
+                  const newPos = new vscode.Position(prevLine, 0);
+                  editor.selection = new vscode.Selection(newPos, newPos);
+                }
               } catch { /* best-effort */ }
               finally { renumberBusy = false; }
               return;

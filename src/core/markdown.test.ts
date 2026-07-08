@@ -12,7 +12,7 @@ import {
   indentLine, outdentLine,
   toggleWrap, toggleHtmlWrap,
   findWrapperAround, findHtmlWrapperAround,
-  parseListPrefix, getNextNumber, buildNextLinePrefix,
+  parseListPrefix, emptyListItemAction, computeOutdentPrefix, adaptMarkerForLevel, getNextNumber, buildNextLinePrefix,
   findListBounds, renumberList,
   visualIndent,
 } from './markdown';
@@ -740,6 +740,204 @@ describe('parseListPrefix', () => {
   it('returns none for regular text', () => {
     const result = parseListPrefix('just text');
     expect(result.type).toBe('none');
+  });
+});
+
+// ─── emptyListItemAction ─────────────────────────────────────────────
+
+describe('emptyListItemAction', () => {
+  // Root-level empty → 'delete'
+  it('deletes empty numbered at root', () => {
+    expect(emptyListItemAction('1. ', '')).toBe('delete');
+  });
+  it('deletes empty bullet at root', () => {
+    expect(emptyListItemAction('- ', '')).toBe('delete');
+  });
+
+  // Indented empty → 'outdent'
+  it('outdents empty indented item (spaces)', () => {
+    expect(emptyListItemAction('  1. ', '')).toBe('outdent');
+  });
+  it('outdents empty indented item (tab)', () => {
+    expect(emptyListItemAction('\t- ', '')).toBe('outdent');
+  });
+
+  // Non-empty / non-list → 'none'
+  it('ignores non-empty list item', () => {
+    expect(emptyListItemAction('1. some text', '')).toBe('none');
+  });
+  it('ignores non-list line', () => {
+    expect(emptyListItemAction('just text', '')).toBe('none');
+  });
+
+  // CRITICAL: split line (user bug report) → 'none'
+  it('ignores split line — cursor line has content', () => {
+    expect(emptyListItemAction('5. ', 'Certainly, new and emergent sources (e.g., social networking interactions) have challenged')).toBe('none');
+  });
+
+  // Edge cases
+  it('whitespace-only cursor line counts as empty', () => {
+    expect(emptyListItemAction('1. ', '   ')).toBe('delete');
+  });
+  it('trailing spaces in prefix counts as empty', () => {
+    expect(emptyListItemAction('1.   ', '')).toBe('delete');
+  });
+});
+
+// ─── computeOutdentPrefix ────────────────────────────────────────────
+
+describe('computeOutdentPrefix', () => {
+  it('adapts empty bullet to numbered parent (user scenario: Enter on empty "- ")', () => {
+    // User has nested bullet under numbered, presses Enter on empty "    - "
+    const lines = [
+      '5. **ANALYZE DATA** integrating inductive and deductive strategies',
+      '    - **masking the names** of respondents',
+      '    - trying to **make sense** of the data.',
+      '    - ',  // line 3: empty bullet, will outdent → should become "6. "
+    ];
+    const parsed = parseListPrefix(lines[3]);
+    const result = computeOutdentPrefix(lines, 3, parsed, 4);
+    expect(result).toBe('6. ');
+  });
+
+  it('adapts empty numbered to bullet parent (reverse direction)', () => {
+    const lines = [
+      '- Parent bullet item',
+      '    1. sub-item one',
+      '    2. ',  // line 2: empty numbered, will outdent → should become "- "
+    ];
+    const parsed = parseListPrefix(lines[2]);
+    const result = computeOutdentPrefix(lines, 2, parsed, 4);
+    expect(result).toBe('- ');
+  });
+
+  it('keeps same type when parent is same type', () => {
+    const lines = [
+      '- Parent',
+      '    - child',
+      '    - ',  // empty bullet → outdent to bullet
+    ];
+    const parsed = parseListPrefix(lines[2]);
+    const result = computeOutdentPrefix(lines, 2, parsed, 4);
+    expect(result).toBe('- ');
+  });
+
+  it('increments parent number correctly', () => {
+    const lines = [
+      '1. first',
+      '2. second',
+      '    - sub-bullet',
+      '    - ',  // outdent → should be 3.
+    ];
+    const parsed = parseListPrefix(lines[3]);
+    const result = computeOutdentPrefix(lines, 3, parsed, 4);
+    expect(result).toBe('3. ');
+  });
+
+  it('handles tab indentation', () => {
+    const lines = [
+      '1. Parent',
+      '\t- child',
+      '\t- ',
+    ];
+    const parsed = parseListPrefix(lines[2]);
+    const result = computeOutdentPrefix(lines, 2, parsed, 4);
+    expect(result).toBe('2. ');
+  });
+
+  it('falls back to current marker when no parent found', () => {
+    const lines = [
+      '    - orphan item',
+      '    - ',
+    ];
+    const parsed = parseListPrefix(lines[1]);
+    const result = computeOutdentPrefix(lines, 1, parsed, 4);
+    expect(result).toBe('- ');
+  });
+
+  it('skips empty lines when looking for parent', () => {
+    const lines = [
+      '3. Parent item',
+      '',
+      '    - child',
+      '    - ',
+    ];
+    const parsed = parseListPrefix(lines[3]);
+    const result = computeOutdentPrefix(lines, 3, parsed, 4);
+    expect(result).toBe('4. ');
+  });
+});
+
+// ─── adaptMarkerForLevel ─────────────────────────────────────────────
+
+describe('adaptMarkerForLevel', () => {
+  it('adapts numbered to bullet after Shift+Tab (user scenario: full list)', () => {
+    // User presses Shift+Tab on "3. One helpful way..." which was at 8-space indent.
+    // After VS Code outdent it's at 4-space indent, where siblings are bullets.
+    const lines = [
+      '5. **ANALYZE DATA** integrating inductive and deductive strategies',
+      '    - **masking the names** of respondents',
+      '    - trying to **make sense** of the data.',
+      '    - We analyze the qualitative data',
+      '        1. working **inductively** (to engage in meaning-making of the data) from particulars to more general perspectives',
+      '        2. working **deductively** to gather evidence to support the themes and the interpretations.',
+      '    3. One helpful way to see this process is to recognize it as working through multiple levels of abstraction, starting',
+    ];
+    // Line 6 was outdented from 8-space to 4-space. Siblings at 4-space are bullets.
+    expect(adaptMarkerForLevel(lines, 6, 4))
+      .toBe('    - One helpful way to see this process is to recognize it as working through multiple levels of abstraction, starting');
+  });
+
+  it('adapts bullet to numbered after Shift+Tab', () => {
+    const lines = [
+      '1. first item',
+      '2. second item',
+      '- was indented, now outdented to root',
+    ];
+    expect(adaptMarkerForLevel(lines, 2, 4)).toBe('3. was indented, now outdented to root');
+  });
+
+  it('returns null when same type as siblings', () => {
+    const lines = [
+      '- first',
+      '- second',
+    ];
+    expect(adaptMarkerForLevel(lines, 1, 4)).toBeNull();
+  });
+
+  it('returns null when no siblings found', () => {
+    const lines = [
+      'plain text',
+      '- lonely item',
+    ];
+    expect(adaptMarkerForLevel(lines, 1, 4)).toBeNull();
+  });
+
+  it('returns null for non-list lines', () => {
+    const lines = ['just text'];
+    expect(adaptMarkerForLevel(lines, 0, 4)).toBeNull();
+  });
+
+  it('skips empty lines when looking for siblings', () => {
+    const lines = [
+      '1. first',
+      '',
+      '- outdented item',
+    ];
+    expect(adaptMarkerForLevel(lines, 2, 4)).toBe('2. outdented item');
+  });
+
+  it('handles empty list items', () => {
+    const lines = [
+      '- parent',
+      '    1. ',
+    ];
+    // After outdent, "1. " at root, sibling is "- parent"
+    // Since isEmpty, content is ''
+    const adapted = adaptMarkerForLevel(
+      ['- parent', '1. '], 1, 4
+    );
+    expect(adapted).toBe('- ');
   });
 });
 
