@@ -12,7 +12,7 @@ import {
   indentLine, outdentLine,
   toggleWrap, toggleHtmlWrap,
   findWrapperAround, findHtmlWrapperAround,
-  parseListPrefix, emptyListItemAction, computeOutdentPrefix, adaptMarkerForLevel, getNextNumber, buildNextLinePrefix,
+  parseListPrefix, emptyListItemAction, computeOutdentPrefix, adaptMarkerForLevel, getNextNumber, buildNextLinePrefix, romanToInt, intToRoman,
   findListBounds, renumberList,
   visualIndent,
 } from './markdown';
@@ -740,6 +740,107 @@ describe('parseListPrefix', () => {
   it('returns none for regular text', () => {
     const result = parseListPrefix('just text');
     expect(result.type).toBe('none');
+  });
+});
+
+// ─── romanToInt / intToRoman ─────────────────────────────────────────
+
+describe('romanToInt', () => {
+  it('converts basic numerals', () => {
+    expect(romanToInt('i')).toBe(1);
+    expect(romanToInt('v')).toBe(5);
+    expect(romanToInt('x')).toBe(10);
+  });
+  it('converts compound numerals', () => {
+    expect(romanToInt('ii')).toBe(2);
+    expect(romanToInt('iv')).toBe(4);
+    expect(romanToInt('ix')).toBe(9);
+    expect(romanToInt('xiv')).toBe(14);
+  });
+  it('handles uppercase', () => {
+    expect(romanToInt('IV')).toBe(4);
+    expect(romanToInt('XII')).toBe(12);
+  });
+});
+
+describe('intToRoman', () => {
+  it('converts basic numbers', () => {
+    expect(intToRoman(1)).toBe('i');
+    expect(intToRoman(4)).toBe('iv');
+    expect(intToRoman(9)).toBe('ix');
+    expect(intToRoman(14)).toBe('xiv');
+  });
+  it('converts uppercase', () => {
+    expect(intToRoman(3, true)).toBe('III');
+    expect(intToRoman(9, true)).toBe('IX');
+  });
+});
+
+// ─── parseListPrefix (roman) ────────────────────────────────────────
+
+describe('parseListPrefix (roman)', () => {
+  it('parses lowercase roman', () => {
+    const r = parseListPrefix('(ii) through PAR and shadowing');
+    expect(r.type).toBe('roman');
+    expect(r.marker).toBe('(ii)');
+    expect(r.number).toBe(2);
+    expect(r.isEmpty).toBe(false);
+  });
+  it('parses uppercase roman', () => {
+    const r = parseListPrefix('(IV) fourth item');
+    expect(r.type).toBe('roman');
+    expect(r.number).toBe(4);
+  });
+  it('parses indented roman', () => {
+    const r = parseListPrefix('    (iii) nested');
+    expect(r.type).toBe('roman');
+    expect(r.indent).toBe('    ');
+    expect(r.number).toBe(3);
+  });
+  it('detects empty roman item', () => {
+    const r = parseListPrefix('(i) ');
+    expect(r.type).toBe('roman');
+    expect(r.isEmpty).toBe(true);
+  });
+});
+
+// ─── buildNextLinePrefix (roman) ────────────────────────────────────
+
+describe('buildNextLinePrefix (roman)', () => {
+  it('builds next roman prefix', () => {
+    const prefix = buildNextLinePrefix(
+      { type: 'roman', marker: '(ii)', indent: '', number: 2, isEmpty: false },
+      1, 'increment'
+    );
+    expect(prefix).toBe('(iii) ');
+  });
+  it('preserves uppercase', () => {
+    const prefix = buildNextLinePrefix(
+      { type: 'roman', marker: '(IV)', indent: '  ', number: 4, isEmpty: false },
+      3, 'increment'
+    );
+    expect(prefix).toBe('  (V) ');
+  });
+});
+
+// ─── adaptMarkerForLevel (roman) ────────────────────────────────────
+
+describe('adaptMarkerForLevel (roman)', () => {
+  it('adapts numbered to roman sibling', () => {
+    const lines = [
+      '(i) first approach',
+      '(ii) second approach',
+      '3. was indented, now at root',
+    ];
+    expect(adaptMarkerForLevel(lines, 2, 4)).toBe('(iii) was indented, now at root');
+  });
+  it('adapts roman to numbered sibling', () => {
+    const lines = [
+      '1. first',
+      '2. second',
+      '(iii) was indented, now at root',
+    ];
+    expect(adaptMarkerForLevel(lines, 2, 4)).toBe('3. was indented, now at root');
   });
 });
 

@@ -19,6 +19,14 @@
     {
       "beforeText": "^\\s*\\d+\\.\\s+.+$",
       "action": { "indent": "none", "appendText": "1. " }
+    },
+    {
+      "beforeText": "^\\s*\\([ivxlcdm]+\\)\\s+.+$",
+      "action": { "indent": "none", "appendText": "(i) " }
+    },
+    {
+      "beforeText": "^\\s*\\([IVXLCDM]+\\)\\s+.+$",
+      "action": { "indent": "none", "appendText": "(I) " }
     }
   ]
 }

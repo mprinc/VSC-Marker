@@ -332,7 +332,8 @@ async function onEnter(): Promise<void> {
 
     const shouldHandle =
       (current.type === 'bullet' && bulletEnabled) ||
-      (current.type === 'number' && numberedEnabled);
+      (current.type === 'number' && numberedEnabled) ||
+      (current.type === 'roman' && numberedEnabled);
 
     if (!shouldHandle) {
       await defaultNewline(vscEditor);
@@ -765,6 +766,16 @@ async function indentListCmd(): Promise<void> {
   // VS Code does the actual indent
   await vscode.commands.executeCommand('editor.action.indentLines');
 
+  // Adapt marker type to match siblings at the new indent level
+  const doc = vscEditor.document;
+  const curLine = vscEditor.selection.active.line;
+  const tabSize = (vscEditor.options.tabSize as number) || 4;
+  const allLines = getDocLines(doc);
+  const adapted = adaptMarkerForLevel(allLines, curLine, tabSize);
+  if (adapted !== null) {
+    await vscEditor.edit(eb => eb.replace(doc.lineAt(curLine).range, adapted));
+  }
+
   // Post-process: renumber entire list block
   await renumberSurroundingList(vscEditor);
   skipNextDebounce = true;
@@ -1196,7 +1207,8 @@ export function activate(context: vscode.ExtensionContext): void {
           const [start, end] = findListBounds(allLines, cursorLine);
           let hasNumbered = false;
           for (let i = start; i <= end; i++) {
-            if (parseListPrefix(allLines[i]).type === 'number') {
+            const t = parseListPrefix(allLines[i]).type;
+            if (t === 'number' || t === 'roman') {
               hasNumbered = true;
               break;
             }

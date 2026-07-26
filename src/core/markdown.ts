@@ -514,15 +514,41 @@ export function findHtmlWrapperAround(
 // --- List continuation ---
 
 export interface ListPrefix {
-  type: 'bullet' | 'number' | 'none';
-  marker: string;      // "-", "+", or "1."
+  type: 'bullet' | 'number' | 'roman' | 'none';
+  marker: string;      // "-", "+", "1.", "(ii)"
   indent: string;      // leading whitespace
-  number?: number;     // parsed number for numbered lists
+  number?: number;     // parsed number for numbered/roman lists
   isEmpty: boolean;    // true if line is just the marker with no content
 }
 
 const BULLET_REGEX = /^(\s*)([-+])\s(.*)$/;
 const NUMBER_REGEX = /^(\s*)(\d+)\.\s(.*)$/;
+const ROMAN_REGEX = /^(\s*)\(([ivxlcdmIVXLCDM]+)\)\s(.*)$/;
+
+export function romanToInt(roman: string): number {
+  const values: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+  const lower = roman.toLowerCase();
+  let result = 0;
+  for (let i = 0; i < lower.length; i++) {
+    const cur = values[lower[i]] ?? 0;
+    const next = i + 1 < lower.length ? (values[lower[i + 1]] ?? 0) : 0;
+    result += cur < next ? -cur : cur;
+  }
+  return result;
+}
+
+export function intToRoman(num: number, uppercase = false): string {
+  const pairs: [number, string][] = [
+    [1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'],
+    [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'],
+    [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i'],
+  ];
+  let result = '';
+  for (const [value, numeral] of pairs) {
+    while (num >= value) { result += numeral; num -= value; }
+  }
+  return uppercase ? result.toUpperCase() : result;
+}
 
 export function parseListPrefix(line: string): ListPrefix {
   const bulletMatch = line.match(BULLET_REGEX);
@@ -543,6 +569,18 @@ export function parseListPrefix(line: string): ListPrefix {
       indent: numberMatch[1],
       number: parseInt(numberMatch[2], 10),
       isEmpty: numberMatch[3].trim() === '',
+    };
+  }
+
+  const romanMatch = line.match(ROMAN_REGEX);
+  if (romanMatch) {
+    const romanStr = romanMatch[2];
+    return {
+      type: 'roman',
+      marker: `(${romanStr})`,
+      indent: romanMatch[1],
+      number: romanToInt(romanStr),
+      isEmpty: romanMatch[3].trim() === '',
     };
   }
 
@@ -600,6 +638,11 @@ export function computeOutdentPrefix(
       if (parsed.type === 'number') {
         return newIndent + (parsed.number! + 1) + '. ';
       }
+      if (parsed.type === 'roman') {
+        const romanStr = parsed.marker.slice(1, -1);
+        const isUpper = romanStr === romanStr.toUpperCase();
+        return newIndent + '(' + intToRoman(parsed.number! + 1, isUpper) + ') ';
+      }
       return newIndent + parsed.marker + ' ';
     }
     if (w < targetWidth) { break; }
@@ -643,6 +686,11 @@ export function adaptMarkerForLevel(
       );
       if (sib.type === 'number') {
         return parsed.indent + (sib.number! + 1) + '. ' + content;
+      }
+      if (sib.type === 'roman') {
+        const romanStr = sib.marker.slice(1, -1);
+        const isUpper = romanStr === romanStr.toUpperCase();
+        return parsed.indent + '(' + intToRoman(sib.number! + 1, isUpper) + ') ' + content;
       }
       return parsed.indent + sib.marker + ' ' + content;
     }
@@ -690,6 +738,12 @@ export function buildNextLinePrefix(
   if (current.type === 'number' && current.number !== undefined) {
     const next = getNextNumber(current.number, previousNumber, numberedMode);
     return `${current.indent}${next}. `;
+  }
+
+  if (current.type === 'roman' && current.number !== undefined) {
+    const next = getNextNumber(current.number, previousNumber, numberedMode);
+    const isUpper = current.marker.slice(1, -1) === current.marker.slice(1, -1).toUpperCase();
+    return `${current.indent}(${intToRoman(next, isUpper)}) `;
   }
 
   return '';
@@ -748,7 +802,7 @@ export function renumberList(
 
   for (let i = startLine; i <= endLine; i++) {
     const parsed = parseListPrefix(lines[i]);
-    if (parsed.type !== 'number') { continue; }
+    if (parsed.type !== 'number' && parsed.type !== 'roman') { continue; }
 
     const w = visualIndent(parsed.indent, tabSize);
 
@@ -785,7 +839,7 @@ export function renumberList(
       if (second === null) {
         for (let j = i + 1; j <= endLine; j++) {
           const next = parseListPrefix(lines[j]);
-          if (next.type !== 'number') { continue; }
+          if (next.type !== 'number' && next.type !== 'roman') { continue; }
           const nw = visualIndent(next.indent, tabSize);
           if (nw < w) { break; }
           if (nw === w) { second = next.number!; autoInfo.get(w)!.second = second; break; }
@@ -803,7 +857,13 @@ export function renumberList(
     }
 
     if (newNum !== parsed.number) {
-      changes.set(i, lines[i].replace(/^(\s*)\d+\./, `$1${newNum}.`));
+      if (parsed.type === 'roman') {
+        const romanStr = parsed.marker.slice(1, -1);
+        const isUpper = romanStr === romanStr.toUpperCase();
+        changes.set(i, lines[i].replace(/^(\s*)\([ivxlcdmIVXLCDM]+\)/, `$1(${intToRoman(newNum, isUpper)})`));
+      } else {
+        changes.set(i, lines[i].replace(/^(\s*)\d+\./, `$1${newNum}.`));
+      }
     }
   }
 
