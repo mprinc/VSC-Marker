@@ -1,17 +1,18 @@
+Synced with commit: c43b590
+
 # Architecture
 
 ## Overview
 
-Marker is a VS Code extension that enhances Markdown editing by providing smart paste operations for links and images.
+Marker is a VS Code extension that enhances Markdown editing — smart paste, formatting, living lists (bullet, numbered, roman numeral), tables, headings, and HTML export. It uses a provider-based architecture where possible to avoid blocking system keys on extension host crash.
 
 ## Layer Architecture
-
-The extension follows a three-layer architecture to minimize coupling with VS Code APIs:
 
 ```
 ┌─────────────────────────────┐
 │     VS Code Extension       │  src/extension.ts
-│  (Command Registration)     │  Registers commands, wires layers together
+│  (Commands, Providers,      │  Registers commands, providers, listeners
+│   Listeners)                │
 ├─────────────────────────────┤
 │     Platform Layer          │  src/platform/
 │  (VS Code Implementations) │  Implements interfaces using VS Code APIs
@@ -23,118 +24,111 @@ The extension follows a three-layer architecture to minimize coupling with VS Co
 
 ### Core Layer (`src/core/markdown.ts`)
 
-Pure functions with zero dependencies. Can be tested and reused outside VS Code.
+Pure functions with zero dependencies. Tested via vitest (~194 tests).
 
-| Function | Input | Output | Purpose |
-|---|---|---|---|
-| `wrapWithLink(text, url)` | `"click here", "https://example.com"` | `"[click here](https://example.com)"` | Create Markdown link |
-| `wrapWithImage(alt, path)` | `"photo", "photo.png"` | `"![photo](photo.png)"` | Create Markdown image |
-| `isUrl(text)` | `"https://example.com"` | `true` | Validate URL |
-| `sanitizeFilename(text)` | `"My Photo!"` | `"my-photo"` | Clean text for filenames |
-| `buildImageFilename(alt, ext)` | `"My Photo", "png"` | `"my-photo.png"` | Build image filename from alt text |
+Key function groups:
+
+| Group | Functions | Purpose |
+|---|---|---|
+| **Links/Images** | `wrapWithLink`, `wrapWithImage`, `isUrl`, `isFilePath`, `shouldPasteAsLink`, `filePathToMarkdownUrl` | Link/image markdown generation |
+| **List parsing** | `parseListPrefix`, `emptyListItemAction`, `computeOutdentPrefix`, `adaptMarkerForLevel` | Parse bullet/number/roman prefixes, decide outdent vs delete, adapt marker type |
+| **List numbering** | `getNextNumber`, `buildNextLinePrefix`, `findListBounds`, `renumberList` | Continue lists, renumber blocks |
+| **Roman numerals** | `romanToInt`, `intToRoman` | Convert between integer and roman numeral strings |
+| **Formatting** | `toggleWrap`, `toggleHtmlWrap`, `findWrapperAround`, `findHtmlWrapperAround`, `toggleCodeSpan`, `toggleCodeBlock` | Bold, italic, underline, strikethrough, code |
+| **Headings** | `getHeadingLevel`, `setHeadingLevel` | Heading level cascade |
+| **Tables** | `detectDelimiter`, `parseTextAsTable`, `generateMarkdownTable` | Table creation/conversion |
 
 ### Platform Layer (`src/platform/`)
 
-**Interfaces** (`interfaces.ts`) — platform-agnostic contracts:
-
-```typescript
-interface ClipboardService {
-  readText(): Promise<string>;        // Read text from clipboard
-  readImage(): Promise<Uint8Array | null>;  // Read binary image from clipboard
-}
-
-interface EditorService {
-  getSelectedText(): string | null;     // Get currently selected text
-  replaceSelection(newText: string): Promise<boolean>;  // Replace selection
-  getCurrentFilePath(): string | null;  // Get active file path
-}
-
-interface FileSystemService {
-  writeFile(path: string, data: Uint8Array): Promise<void>;
-  fileExists(path: string): Promise<boolean>;
-  getDirname(filePath: string): string;
-}
-
-interface NotificationService {
-  showInfo(message: string): void;
-  showError(message: string): void;
-}
-```
-
-**VS Code Implementation** (`vscode-platform.ts`) — all VS Code API usage is contained here:
-
-- `VscClipboardService` — wraps `vscode.env.clipboard` for text, uses native OS tools for binary image reading
-- `VscEditorService` — wraps `vscode.window.activeTextEditor` for text operations
-- `VscFileSystemService` — wraps Node.js `fs` module
-- `VscNotificationService` — wraps `vscode.window.showInformationMessage/showErrorMessage`
+Interfaces (`interfaces.ts`) + VS Code implementations (`vscode-platform.ts`):
+- `ClipboardService` — text + binary image reading
+- `EditorService` — selection, replace, file path
+- `FileSystemService` — write file, check existence
+- `NotificationService` — info/error messages
 
 ### Extension Entry Point (`src/extension.ts`)
 
-Wires everything together and registers two commands:
+Registers 18 commands, 1 paste provider, 1 text change listener, language configuration.
 
-- `marker.pasteLink` — reads URL from clipboard, wraps selected text as `[text](url)`
-- `marker.pasteImage` — reads image from clipboard, saves as PNG, wraps selected text as `![text](filename.png)`
+## Key Binding Safety Architecture
 
-## Clipboard Image Reading
+System keys (Enter, Cmd+V, Tab) use a configurable binding mode (`marker.bindings.keys.*.mode`):
 
-VS Code's clipboard API (`vscode.env.clipboard`) only supports text. For binary image data, the extension uses native OS commands:
+| Mode | Mechanism | Crash-safe |
+|---|---|---|
+| `provider` (default for Enter, Paste) | `DocumentPasteEditProvider` / `onEnterRules` + listener | Yes — provider skipped when host dead |
+| `keybinding-override` | Keybinding → extension command | No — key blocked if host crashes |
+| `tab-override` (default for Tab) | Keybinding → command + VS Code indent first | No — same as keybinding-override |
+| `auto-listener` (Tab only) | Native Tab + listener auto-renumbers | Yes |
+| `manual` | No override — Command Palette only | Yes |
 
-| Platform | Method |
-|---|---|
-| **macOS** | AppleScript via `osascript` — accesses `NSPasteboard` to read PNG/TIFF data |
-| **Linux** | `xclip -selection clipboard -t image/png` |
-| **Windows** | PowerShell `System.Windows.Forms.Clipboard::GetImage()` |
+Recovery: set `marker.enabled: false` in VS Code settings → all keybindings deactivate.
 
-The image is written to a temp file, read into a `Uint8Array`, then the temp file is deleted.
+### Provider APIs used
+
+| Key | Provider | Fallback |
+|---|---|---|
+| **Cmd+V** | `DocumentPasteEditProvider` with kind `text.marker.smartPaste` | Default paste (provider returns undefined) |
+| **Enter** | `onEnterRules` in `language-configuration.json` + `onDidChangeTextDocument` listener | Native Enter (rules require `.+` content) |
+| **Tab** | `editor.action.indentLines` + post-process renumber | Native indent (command runs first) |
+
+## List Intelligence
+
+### Supported types
+- Bullet: `-`, `+`, `*`
+- Numbered: `1.`, `2.`, ...
+- Roman numeral: `(i)`, `(ii)`, `(III)`, ...
+
+### Progressive outdent (Enter on empty item)
+1. Indented empty item → outdent one level, adapt marker to parent list type
+2. Root-level empty item → delete prefix entirely (exit list)
+3. Split-line safety: if cursor line has content after split, never delete
+
+### Marker type adaptation
+On indent/outdent (Tab/Shift+Tab or Enter outdent), the marker adapts to match siblings at the target indent level:
+- `3.` outdented into bullet context → `-`
+- `-` indented into numbered context → `4.`
+- `(iii)` outdented into numbered context → `4.`
 
 ## Data Flow
 
-### Paste Link
+### Smart Paste (provider mode)
 
 ```
-1. User selects text in Markdown file
-2. User copies a URL to clipboard
-3. User triggers "Marker: Paste Link" (Cmd+Alt+V)
-4. Extension reads clipboard text → validates it's a URL
-5. Extension reads selected text
-6. Core function: wrapWithLink(selectedText, url) → "[text](url)"
-7. Selection is replaced with the Markdown link
+1. User pastes (Cmd+V)
+2. VS Code calls DocumentPasteEditProvider
+3. Provider reads dataTransfer (text/plain or image/png)
+4. URL detected → wraps selection as [text](url)
+   Image detected → saves file, inserts ![alt](file.png)
+   Neither → returns undefined (default paste)
+5. editor.pasteAs.preferences auto-applies without widget
 ```
 
-### Paste Image
+### Enter continuation (provider mode)
 
 ```
-1. User selects text in Markdown file (will be used as alt text + filename)
-2. User copies an image to clipboard (e.g., screenshot)
-3. User triggers "Marker: Paste Image" (Cmd+Alt+I)
-4. Extension reads clipboard image data (binary PNG)
-5. Extension reads selected text → sanitizes for filename
-6. Extension saves image as "selected-text.png" in the same folder as the .md file
-7. Core function: wrapWithImage(altText, filename) → "![text](filename.png)"
-8. Selection is replaced with the Markdown image reference
+1. User presses Enter on "3. item text"
+2. onEnterRule matches → appends "1. " on new line
+3. Listener fires (400ms debounce) → renumberSurroundingList → "1." becomes "4."
+4. If Enter on empty "3. " → rule doesn't match → native Enter →
+   listener detects empty prefix → progressive outdent or delete
 ```
+
+## Clipboard Image Reading
+
+VS Code's clipboard API only supports text. For binary image data:
+
+| Platform | Method |
+|---|---|
+| **macOS** | AppleScript via `osascript` — reads `NSPasteboard` PNG/TIFF |
+| **Linux** | `xclip -selection clipboard -t image/png` |
+| **Windows** | PowerShell `System.Windows.Forms.Clipboard::GetImage()` |
 
 ## External Dependencies
 
-| Dependency | Purpose | Link |
-|---|---|---|
-| `@types/vscode` | VS Code API type definitions | https://www.npmjs.com/package/@types/vscode |
-| `esbuild` | Fast bundler for the extension | https://esbuild.github.io/ |
-| `typescript` | TypeScript compiler | https://www.typescriptlang.org/ |
-
-## Key VS Code APIs Used
-
-| API | Documentation | Purpose |
-|---|---|---|
-| `vscode.commands.registerCommand` | [Commands API](https://code.visualstudio.com/api/references/vscode-api#commands) | Register extension commands |
-| `vscode.env.clipboard.readText` | [Env API](https://code.visualstudio.com/api/references/vscode-api#env) | Read text from clipboard |
-| `vscode.window.activeTextEditor` | [Window API](https://code.visualstudio.com/api/references/vscode-api#window) | Access the active editor |
-| `TextEditor.edit` | [TextEditor API](https://code.visualstudio.com/api/references/vscode-api#TextEditor) | Modify document content |
-| `TextEditor.selection` | [Selection API](https://code.visualstudio.com/api/references/vscode-api#Selection) | Get/set text selection |
-
-## Keybindings
-
-| Command | Windows/Linux | macOS | Context |
-|---|---|---|---|
-| Paste Link | `Ctrl+Alt+V` | `Cmd+Alt+V` | Markdown files only |
-| Paste Image | `Ctrl+Alt+I` | `Cmd+Alt+I` | Markdown files only |
+| Dependency | Purpose |
+|---|---|
+| `@types/vscode` | VS Code API type definitions |
+| `esbuild` | Bundler |
+| `typescript` | Compiler |
+| `vitest` | Test runner |

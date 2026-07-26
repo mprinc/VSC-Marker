@@ -1,3 +1,5 @@
+Synced with commit: c43b590
+
 # Marker
 
 **Write Markdown at the speed of thought.**
@@ -20,7 +22,7 @@ A zero-config VS Code extension that adds 18 keyboard-driven Markdown commands. 
 
 - **Smart Paste** — paste a URL over text and get `[text](url)`. Paste an image and get `![alt](file.png)` with the file saved to disk. Paste a file path and get a clickable relative link.
 - **One-key formatting** — bold, italic, underline, strikethrough, code span, code block. All toggleable. Works on selection or word under cursor.
-- **Living lists** — Enter continues bullets and numbers. Tab/Shift+Tab indents and outdents. Empty item + Enter clears the marker.
+- **Living lists** — Enter continues bullets, numbers, and roman numerals. Tab/Shift+Tab indent/outdent with automatic marker type adaptation. Progressive outdent on empty items.
 - **Heading cascade** — promote or demote a heading and all its sub-headings follow.
 - **Instant tables** — create from scratch or convert CSV/TSV/pipe-delimited text with delimiter auto-detection.
 - **Workspace-aware links** — file paths inside your workspace become relative links (CMD+click friendly). Outside paths get `file://` URLs. Cmd+Alt+V inverts the mode.
@@ -50,7 +52,14 @@ All shortcuts are active only in Markdown files.
 | Create Table | `Cmd+Alt+T` | `Ctrl+Alt+T` | Create empty table or convert selected text to table |
 | Preview | `Cmd+Shift+V` | `Ctrl+Shift+V` | Live markdown preview in side panel |
 | Export HTML | — | — | Export current file to HTML (via Command Palette) |
-| Smart Enter | `Enter` | `Enter` | Auto-continue bullet and numbered lists |
+| Smart Enter | `Enter` | `Enter` | Auto-continue bullet, numbered, and roman numeral lists |
+
+### List intelligence
+
+- **Supported list types**: bullet (`-`, `+`, `*`), numbered (`1.`, `2.`), roman numeral (`(i)`, `(ii)`, `(III)`)
+- **Enter continuation**: auto-continues with next item, renumbers as needed
+- **Progressive outdent**: Enter on empty nested item outdents one level; at root level exits the list
+- **Marker type adaptation**: indent/outdent automatically adapts marker to match the target level (e.g. `3.` → `-` when outdenting into a bullet list, or `(iii)` → `4.` when outdenting into a numbered list)
 
 ### Smart behaviors
 
@@ -62,7 +71,7 @@ All shortcuts are active only in Markdown files.
   - `"always"` — always relative
   - `"never"` — always absolute (`file://`)
   - `Cmd+Alt+V` always **inverts** the mode — e.g., if Cmd+V produces relative, Cmd+Alt+V produces absolute
-- **Empty list item**: pressing Enter on an empty `- ` or `1. ` removes the marker
+- **Empty list item**: pressing Enter on an empty `- ` or `1. ` or `(i) ` removes the marker (root level) or outdents (nested)
 - **Numbered lists**: auto-numbering supports `auto` mode (detects pattern) and `increment` mode
 
 ## Install
@@ -72,13 +81,10 @@ All shortcuts are active only in Markdown files.
 ```bash
 cd VSC-Marker
 npm install
-npx @vscode/vsce package
-code --install-extension marker-0.0.1.vsix
+bash deploy.sh   # auto-bumps version, compiles, tests, packages, installs
 ```
 
 After installing, **restart** VS Code or run `Cmd+Shift+P` → `Developer: Reload Window`.
-
-To update: bump `version` in `package.json`, repeat the steps above.
 
 To uninstall: `Cmd+Shift+P` → `Extensions: Uninstall` → search "Marker".
 
