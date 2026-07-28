@@ -779,26 +779,32 @@ describe('intToRoman', () => {
 // ─── parseListPrefix (roman) ────────────────────────────────────────
 
 describe('parseListPrefix (roman)', () => {
-  it('parses lowercase roman', () => {
+  it('parses bare roman "(ii) text"', () => {
     const r = parseListPrefix('(ii) through PAR and shadowing');
     expect(r.type).toBe('roman');
     expect(r.marker).toBe('(ii)');
     expect(r.number).toBe(2);
     expect(r.isEmpty).toBe(false);
   });
+  it('parses bullet-prefixed roman "- (ii) text"', () => {
+    const r = parseListPrefix('- (ii) through PAR and shadowing');
+    expect(r.type).toBe('roman');
+    expect(r.marker).toBe('(ii)');
+    expect(r.number).toBe(2);
+  });
   it('parses uppercase roman', () => {
     const r = parseListPrefix('(IV) fourth item');
     expect(r.type).toBe('roman');
     expect(r.number).toBe(4);
   });
-  it('parses indented roman', () => {
-    const r = parseListPrefix('    (iii) nested');
+  it('parses indented bullet-prefixed roman', () => {
+    const r = parseListPrefix('    - (iii) nested');
     expect(r.type).toBe('roman');
     expect(r.indent).toBe('    ');
     expect(r.number).toBe(3);
   });
   it('detects empty roman item', () => {
-    const r = parseListPrefix('(i) ');
+    const r = parseListPrefix('- (i) ');
     expect(r.type).toBe('roman');
     expect(r.isEmpty).toBe(true);
   });
@@ -807,32 +813,32 @@ describe('parseListPrefix (roman)', () => {
 // ─── buildNextLinePrefix (roman) ────────────────────────────────────
 
 describe('buildNextLinePrefix (roman)', () => {
-  it('builds next roman prefix', () => {
+  it('always outputs with "- " prefix', () => {
     const prefix = buildNextLinePrefix(
       { type: 'roman', marker: '(ii)', indent: '', number: 2, isEmpty: false },
       1, 'increment'
     );
-    expect(prefix).toBe('(iii) ');
+    expect(prefix).toBe('- (iii) ');
   });
-  it('preserves uppercase', () => {
+  it('preserves uppercase with "- "', () => {
     const prefix = buildNextLinePrefix(
       { type: 'roman', marker: '(IV)', indent: '  ', number: 4, isEmpty: false },
       3, 'increment'
     );
-    expect(prefix).toBe('  (V) ');
+    expect(prefix).toBe('  - (V) ');
   });
 });
 
 // ─── adaptMarkerForLevel (roman) ────────────────────────────────────
 
 describe('adaptMarkerForLevel (roman)', () => {
-  it('adapts numbered to roman sibling', () => {
+  it('adapts numbered to roman sibling (always "- ")', () => {
     const lines = [
       '(i) first approach',
       '(ii) second approach',
       '3. was indented, now at root',
     ];
-    expect(adaptMarkerForLevel(lines, 2, 4)).toBe('(iii) was indented, now at root');
+    expect(adaptMarkerForLevel(lines, 2, 4)).toBe('- (iii) was indented, now at root');
   });
   it('adapts roman to numbered sibling', () => {
     const lines = [

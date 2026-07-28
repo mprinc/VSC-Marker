@@ -523,7 +523,8 @@ export interface ListPrefix {
 
 const BULLET_REGEX = /^(\s*)([-+])\s(.*)$/;
 const NUMBER_REGEX = /^(\s*)(\d+)\.\s(.*)$/;
-const ROMAN_REGEX = /^(\s*)\(([ivxlcdmIVXLCDM]+)\)\s(.*)$/;
+// Matches both "- (ii) text" and "(ii) text" — optional bullet prefix
+const ROMAN_REGEX = /^(\s*)(?:-\s)?\(([ivxlcdmIVXLCDM]+)\)\s(.*)$/;
 
 export function romanToInt(roman: string): number {
   const values: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
@@ -535,6 +536,11 @@ export function romanToInt(roman: string): number {
     result += cur < next ? -cur : cur;
   }
   return result;
+}
+
+/** Build a roman marker string: always "- (iii) " for MD rendering */
+export function buildRomanMarker(num: number, isUpper: boolean): string {
+  return '- (' + intToRoman(num, isUpper) + ') ';
 }
 
 export function intToRoman(num: number, uppercase = false): string {
@@ -551,6 +557,19 @@ export function intToRoman(num: number, uppercase = false): string {
 }
 
 export function parseListPrefix(line: string): ListPrefix {
+  // Roman MUST be checked before bullet — "- (ii) text" matches both
+  const romanMatch = line.match(ROMAN_REGEX);
+  if (romanMatch) {
+    const romanStr = romanMatch[2];
+    return {
+      type: 'roman',
+      marker: `(${romanStr})`,
+      indent: romanMatch[1],
+      number: romanToInt(romanStr),
+      isEmpty: romanMatch[3].trim() === '',
+    };
+  }
+
   const bulletMatch = line.match(BULLET_REGEX);
   if (bulletMatch) {
     return {
@@ -569,18 +588,6 @@ export function parseListPrefix(line: string): ListPrefix {
       indent: numberMatch[1],
       number: parseInt(numberMatch[2], 10),
       isEmpty: numberMatch[3].trim() === '',
-    };
-  }
-
-  const romanMatch = line.match(ROMAN_REGEX);
-  if (romanMatch) {
-    const romanStr = romanMatch[2];
-    return {
-      type: 'roman',
-      marker: `(${romanStr})`,
-      indent: romanMatch[1],
-      number: romanToInt(romanStr),
-      isEmpty: romanMatch[3].trim() === '',
     };
   }
 
@@ -641,7 +648,7 @@ export function computeOutdentPrefix(
       if (parsed.type === 'roman') {
         const romanStr = parsed.marker.slice(1, -1);
         const isUpper = romanStr === romanStr.toUpperCase();
-        return newIndent + '(' + intToRoman(parsed.number! + 1, isUpper) + ') ';
+        return newIndent + buildRomanMarker(parsed.number! + 1, isUpper);
       }
       return newIndent + parsed.marker + ' ';
     }
@@ -677,20 +684,25 @@ export function adaptMarkerForLevel(
     const sibWidth = visualIndent(sib.indent, tabSize);
     if (sibWidth === myWidth) {
       if (sib.type === parsed.type) { return null; } // same type, no change
-      // Different type — adapt marker, keep content
-      // Content starts after: indent + marker + separator
-      // Bullet: indent + marker + " " + content  (marker = "-" or "+")
-      // Number: indent + marker + " " + content  (marker = "3.")
-      const content = parsed.isEmpty ? '' : lines[lineIndex].substring(
-        parsed.indent.length + parsed.marker.length + 1
-      );
+      // Extract content: re-parse to find where content starts
+      // Roman lines may have optional "- " prefix before "(ii) "
+      let content: string;
+      if (parsed.isEmpty) {
+        content = '';
+      } else if (parsed.type === 'roman') {
+        // Match "indent [- ](roman) content" to extract content reliably
+        const m = lines[lineIndex].match(/^(?:\s*)(?:-\s)?\([ivxlcdmIVXLCDM]+\)\s(.*)$/);
+        content = m ? m[1] : '';
+      } else {
+        content = lines[lineIndex].substring(parsed.indent.length + parsed.marker.length + 1);
+      }
       if (sib.type === 'number') {
         return parsed.indent + (sib.number! + 1) + '. ' + content;
       }
       if (sib.type === 'roman') {
         const romanStr = sib.marker.slice(1, -1);
         const isUpper = romanStr === romanStr.toUpperCase();
-        return parsed.indent + '(' + intToRoman(sib.number! + 1, isUpper) + ') ' + content;
+        return parsed.indent + buildRomanMarker(sib.number! + 1, isUpper) + content;
       }
       return parsed.indent + sib.marker + ' ' + content;
     }
@@ -743,7 +755,7 @@ export function buildNextLinePrefix(
   if (current.type === 'roman' && current.number !== undefined) {
     const next = getNextNumber(current.number, previousNumber, numberedMode);
     const isUpper = current.marker.slice(1, -1) === current.marker.slice(1, -1).toUpperCase();
-    return `${current.indent}(${intToRoman(next, isUpper)}) `;
+    return current.indent + buildRomanMarker(next, isUpper);
   }
 
   return '';
@@ -783,6 +795,8 @@ export function findListBounds(lines: string[], lineIndex: number): [number, num
  *             Otherwise → sequential 1, 2, 3, ...
  *
  * Returns a Map of lineIndex → newText for lines that need to change.
+ * If `applyFromLine` is set, only lines >= applyFromLine are included in changes
+ * (counting still starts from startLine to compute correct numbers).
  */
 export function renumberList(
   lines: string[],
@@ -856,14 +870,16 @@ export function renumberList(
       // Don't clear wasReset here — it applies to the entire group
     }
 
-    if (newNum !== parsed.number) {
-      if (parsed.type === 'roman') {
-        const romanStr = parsed.marker.slice(1, -1);
-        const isUpper = romanStr === romanStr.toUpperCase();
-        changes.set(i, lines[i].replace(/^(\s*)\([ivxlcdmIVXLCDM]+\)/, `$1(${intToRoman(newNum, isUpper)})`));
-      } else {
-        changes.set(i, lines[i].replace(/^(\s*)\d+\./, `$1${newNum}.`));
+    if (parsed.type === 'roman') {
+      // Always normalize roman: add "- " prefix + fix number
+      const romanStr = parsed.marker.slice(1, -1);
+      const isUpper = romanStr === romanStr.toUpperCase();
+      const needsDash = !/^\s*-\s\(/.test(lines[i]);
+      if (newNum !== parsed.number || needsDash) {
+        changes.set(i, lines[i].replace(/^(\s*)(?:-\s)?\([ivxlcdmIVXLCDM]+\)/, `$1- (${intToRoman(newNum, isUpper)})`));
       }
+    } else if (newNum !== parsed.number) {
+      changes.set(i, lines[i].replace(/^(\s*)\d+\./, `$1${newNum}.`));
     }
   }
 

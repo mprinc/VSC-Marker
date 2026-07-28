@@ -5,6 +5,14 @@
       "action": { "indent": "none", "appendText": "- [ ] " }
     },
     {
+      "beforeText": "^\\s*(?:-\\s)?\\([ivxlcdm]+\\)\\s+.+$",
+      "action": { "indent": "none", "appendText": "- (i) " }
+    },
+    {
+      "beforeText": "^\\s*(?:-\\s)?\\([IVXLCDM]+\\)\\s+.+$",
+      "action": { "indent": "none", "appendText": "- (I) " }
+    },
+    {
       "beforeText": "^\\s*-\\s+.+$",
       "action": { "indent": "none", "appendText": "- " }
     },
@@ -19,14 +27,6 @@
     {
       "beforeText": "^\\s*\\d+\\.\\s+.+$",
       "action": { "indent": "none", "appendText": "1. " }
-    },
-    {
-      "beforeText": "^\\s*\\([ivxlcdm]+\\)\\s+.+$",
-      "action": { "indent": "none", "appendText": "(i) " }
-    },
-    {
-      "beforeText": "^\\s*\\([IVXLCDM]+\\)\\s+.+$",
-      "action": { "indent": "none", "appendText": "(I) " }
     }
   ]
 }
