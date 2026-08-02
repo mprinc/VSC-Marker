@@ -737,7 +737,7 @@ async function renumberSurroundingList(vscEditor: vscode.TextEditor): Promise<vo
 
   const allLines = getDocLines(doc);
   const [start, end] = findListBounds(allLines, cursorLine);
-  const changes = renumberList(allLines, start, end, tabSize, mode);
+  const changes = renumberList(allLines, start, end, tabSize, mode, cursorLine);
 
   if (changes.size > 0) {
     renumberBusy = true;

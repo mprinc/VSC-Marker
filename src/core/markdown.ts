@@ -803,7 +803,8 @@ export function renumberList(
   startLine: number,
   endLine: number,
   tabSize: number,
-  mode: NumberedListMode
+  mode: NumberedListMode,
+  applyFromLine?: number
 ): Map<number, string> {
   const changes = new Map<number, string>();
 
@@ -871,14 +872,15 @@ export function renumberList(
     }
 
     if (parsed.type === 'roman') {
-      // Always normalize roman: add "- " prefix + fix number
+      // Roman: always normalize entire list (add "- " prefix + fix number)
       const romanStr = parsed.marker.slice(1, -1);
       const isUpper = romanStr === romanStr.toUpperCase();
       const needsDash = !/^\s*-\s\(/.test(lines[i]);
       if (newNum !== parsed.number || needsDash) {
         changes.set(i, lines[i].replace(/^(\s*)(?:-\s)?\([ivxlcdmIVXLCDM]+\)/, `$1- (${intToRoman(newNum, isUpper)})`));
       }
-    } else if (newNum !== parsed.number) {
+    } else if (newNum !== parsed.number && (applyFromLine === undefined || i >= applyFromLine)) {
+      // Arabic: only from cursor down
       changes.set(i, lines[i].replace(/^(\s*)\d+\./, `$1${newNum}.`));
     }
   }

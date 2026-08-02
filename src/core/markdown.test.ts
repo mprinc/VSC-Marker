@@ -1355,4 +1355,17 @@ describe('renumberList', () => {
     const changes = renumberList(lines, 0, 1, 4, 'increment');
     expect(changes.get(1)).toBe('    1. Only child');
   });
+
+  // Regression: applyFromLine must protect lines above cursor for arabic numbers
+  it('does not renumber arabic lines above applyFromLine', () => {
+    const lines = [
+      '2. first url',
+      '3. second url',
+      '4. third url',
+    ];
+    // cursor on line 2 (last line) — lines 0 and 1 must NOT change
+    const changes = renumberList(lines, 0, 2, 4, 'increment', 2);
+    expect(changes.has(0)).toBe(false); // "2." stays
+    expect(changes.has(1)).toBe(false); // "3." stays
+  });
 });
